@@ -156,4 +156,9 @@ export const PALETTE = {
   hill: '#7cbf6a',
   steel: '#3d3a38',
   steelLight: '#5c5855',
+  // New for the wall pass: the wainscot band along the bottom of the wall,
+  // and the neon OPEN sign in the window.
+  wainscot: '#f0c184',
+  wainscotLine: '#d9a05e',
+  neon: '#ff4040',
 };
