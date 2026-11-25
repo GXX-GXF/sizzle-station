@@ -210,14 +210,17 @@ function drawTicket(ctx, ticket, x, y, w, h) {
 
 function drawStation(ctx, world, station, hover) {
   const { x, y, w, h } = station;
+  // The grill station's id is 'grill', but its ingredient is the patty:
+  // INGREDIENTS has no 'grill' key, so resolve the label through 'patty'.
+  const label = INGREDIENTS[station.id === 'grill' ? 'patty' : station.id];
   ctx.save();
   if (hover) {
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     rr(ctx, x - 6, y - 8, w + 12, h + 8, 12);
     ctx.fill();
   }
-  text(ctx, INGREDIENTS[station.id].station, x + w / 2, y + 16, 14, PALETTE.inkSoft, 'center');
-  text(ctx, `[${INGREDIENTS[station.id].key}]`, x + w / 2, y + h - 10, 13, PALETTE.inkSoft, 'center');
+  text(ctx, label.station, x + w / 2, y + 16, 14, PALETTE.inkSoft, 'center');
+  text(ctx, `[${label.key}]`, x + w / 2, y + h - 10, 13, PALETTE.inkSoft, 'center');
   if (station.id === 'bun') {
     ctx.fillStyle = '#8a5a2b';
     rr(ctx, x + 18, y + 46, w - 36, 58, 8);
