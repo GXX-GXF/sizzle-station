@@ -5,9 +5,10 @@
 
 import {
   DISHES, DAYS, INGREDIENTS, PATTY_COOK_SECONDS, PATTY_BURN_SECONDS,
-  GRILL_SLOTS, MAX_EXPIRED_PER_DAY, SERVE_BONUS_MAX, COMBO_STEP,
-  COMBO_CAP, WRONG_SERVE_PENALTY, TURBO_COOK_SECONDS, CALM_PATIENCE_MULT,
-  BIG_TIP_MULT, UPGRADES, SIGNATURE_IDS,
+  GRILL_SLOTS, TRAY_SLOTS, TRAY_SPOIL_SECONDS, MAX_EXPIRED_PER_DAY,
+  SERVE_BONUS_MAX, COMBO_STEP, COMBO_CAP, WRONG_SERVE_PENALTY,
+  TURBO_COOK_SECONDS, CALM_PATIENCE_MULT, BIG_TIP_MULT, UPGRADES,
+  SIGNATURE_IDS,
 } from './config.js';
 import { mulberry32, pick } from './random.js';
 
@@ -66,8 +67,11 @@ export function createWorld(seed = 1) {
     stars: 0,
     event: null, // one-frame event for sounds: 'expire' | 'levelEnd' | 'failed'
     hand: null, // an ingredient id the player is carrying, or null
+    handPattyAge: 0, // tray freshness already used by a held cooked patty
     plate: [], // ingredient ids on the assembly plate, bottom first
     grill: Array.from({ length: GRILL_SLOTS }, () => ({ state: 'empty', t: 0 })),
+    tray: Array.from({ length: TRAY_SLOTS }, () => ({ state: 'empty', t: 0, seq: 0 })),
+    traySeq: 1,
     tickets: [],
     particles: [],
     popups: [],
@@ -91,7 +95,10 @@ export function startDay(world, dayIndex) {
   world.tickets = [];
   world.plate = [];
   world.hand = null;
+  world.handPattyAge = 0;
   world.grill = Array.from({ length: GRILL_SLOTS }, () => ({ state: 'empty', t: 0 }));
+  world.tray = Array.from({ length: TRAY_SLOTS }, () => ({ state: 'empty', t: 0, seq: 0 }));
+  world.traySeq = 1;
   world.dayServed = 0;
   world.dayExpired = 0;
   world.expired = 0; // the HUD's walked-out count is per day: a retry (or a
@@ -212,6 +219,72 @@ function burst(world, x, y, colour, n = 10) {
   }
 }
 
+// The oldest tray patty in the requested state. Age decides first (the
+// patty closest to spoiling is used first); the parking sequence breaks
+// ties, so two patties parked at the same age keep first-in order.
+function traySlotByAge(world, state) {
+  return world.tray
+    .filter((slot) => slot.state === state)
+    .sort((a, b) => (b.t - a.t) || (a.seq - b.seq))[0] || null;
+}
+
+function clearTraySlot(slot) {
+  slot.state = 'empty';
+  slot.t = 0;
+  slot.seq = 0;
+}
+
+// The holding tray: park a cooked patty, take the oldest fresh one back,
+// or bin a spoiled one. A spoiled patty never enters the hand — clicking
+// the tray (or the bin) clears it, so it cannot reach a plate.
+export function useTray(world) {
+  if (world.screen !== 'playing') return null;
+  if (world.hand === 'patty') {
+    const slot = world.tray.find((s) => s.state === 'empty');
+    if (!slot) {
+      toast(world, 'Holding tray is full — use a patty first');
+      return 'wrong';
+    }
+    slot.state = 'fresh';
+    slot.t = Math.min(world.handPattyAge || 0, TRAY_SPOIL_SECONDS);
+    slot.seq = world.traySeq;
+    world.traySeq += 1;
+    world.hand = null;
+    world.handPattyAge = 0;
+    const left = Math.max(1, Math.ceil(TRAY_SPOIL_SECONDS - slot.t));
+    toast(world, `Patty parked — use it within ${left}s`);
+    return 'place';
+  }
+  if (world.hand === 'burnt') {
+    toast(world, "Burnt patties can't be parked — bin it");
+    return 'wrong';
+  }
+  if (world.hand === 'spoiled') {
+    toast(world, 'That patty has spoiled — bin it');
+    return 'wrong';
+  }
+  if (world.hand) {
+    toast(world, 'Only cooked patties go on the tray');
+    return 'wrong';
+  }
+  const spoiled = traySlotByAge(world, 'spoiled');
+  if (spoiled) {
+    clearTraySlot(spoiled);
+    toast(world, 'Spoiled patty binned — tray slot free');
+    return 'place';
+  }
+  const fresh = traySlotByAge(world, 'fresh');
+  if (!fresh) {
+    toast(world, 'Tray is empty — cook a patty first');
+    return 'wrong';
+  }
+  const age = fresh.t;
+  clearTraySlot(fresh);
+  world.hand = 'patty';
+  world.handPattyAge = age;
+  return 'pick';
+}
+
 // ---------------------------------------------------------------- actions
 // Each returns a small event string the caller may play a sound for:
 // 'pick' | 'place' | 'grill' | 'serve' | 'wrong' | 'expire' | null.
@@ -221,13 +294,22 @@ export function pickFromStation(world, stationId) {
   // The bin is not a pick-up: it takes what is held (or a burnt patty off
   // the grill), so it must work with a full hand too.
   if (stationId === 'bin') return discardInBin(world);
-  if (world.hand) { toast(world, 'Hands full — place it on the plate first'); return 'wrong'; }
+  // The tray is the other full-hand station: it parks a held patty, and
+  // with an empty hand it gives the oldest parked patty back.
+  if (stationId === 'tray') return useTray(world);
+  if (world.hand) {
+    toast(world, world.hand === 'patty'
+      ? 'Hands full — plate it or park it on the tray'
+      : 'Hands full — place it on the plate first');
+    return 'wrong';
+  }
   if (stationId === 'grill') return takeFromGrill(world);
   if (!isNextIngredient(world, stationId)) {
     toast(world, `${INGREDIENTS[stationId].name} doesn't go on yet. ${nextHint(world)}`);
     return 'wrong';
   }
   world.hand = stationId;
+  world.handPattyAge = 0;
   return 'pick';
 }
 
@@ -237,6 +319,7 @@ export function takeFromGrill(world) {
     done.state = 'empty';
     done.t = 0;
     world.hand = 'patty';
+    world.handPattyAge = 0;
     return 'pick';
   }
   const burnt = world.grill.find((s) => s.state === 'burnt');
@@ -246,6 +329,7 @@ export function takeFromGrill(world) {
     burnt.state = 'empty';
     burnt.t = 0;
     world.hand = 'burnt';
+    world.handPattyAge = 0;
     toast(world, 'That patty is burnt — bin it!');
     return 'pick';
   }
@@ -264,12 +348,16 @@ export function placeOnPlate(world) {
   if (!world.hand) {
     // Empty hand on the plate takes the top item back off.
     const top = world.plate.pop();
-    if (top) { world.hand = top; return 'pick'; }
+    if (top) { world.hand = top; world.handPattyAge = 0; return 'pick'; }
     return null;
   }
   const item = world.hand;
   if (item === 'burnt') {
     toast(world, 'That patty is burnt — bin it!');
+    return 'wrong';
+  }
+  if (item === 'spoiled') {
+    toast(world, 'That patty has spoiled — bin it');
     return 'wrong';
   }
   // Only the next ingredient in the recipe can go on, in order.
@@ -279,6 +367,7 @@ export function placeOnPlate(world) {
   }
   world.plate.push(item);
   world.hand = null;
+  world.handPattyAge = 0;
   burst(world, 1005, 470, INGREDIENTS[item].colour, 6);
   return 'place';
 }
@@ -289,17 +378,21 @@ export function cancelHeld(world) {
   if (!world.hand) return null;
   const item = world.hand;
   world.hand = null;
-  toast(world, item === 'burnt' ? 'Burnt patty binned' : `${INGREDIENTS[item].name} put down`);
+  world.handPattyAge = 0;
+  toast(world, item === 'burnt' || item === 'spoiled'
+    ? `${INGREDIENTS[item].name} binned`
+    : `${INGREDIENTS[item].name} put down`);
   return 'place';
 }
 
 // The bin: throw away what is held, or, with an empty hand, a burnt patty
-// sitting on the grill, freeing its slot.
+// on the grill or a spoiled patty on the tray, freeing that slot.
 export function discardInBin(world) {
   if (world.screen !== 'playing') return null;
   if (world.hand) {
     const name = INGREDIENTS[world.hand].name;
     world.hand = null;
+    world.handPattyAge = 0;
     toast(world, `${name} binned`);
     return 'place';
   }
@@ -308,6 +401,12 @@ export function discardInBin(world) {
     burnt.state = 'empty';
     burnt.t = 0;
     toast(world, 'Burnt patty binned — the grill is free');
+    return 'place';
+  }
+  const spoiled = traySlotByAge(world, 'spoiled');
+  if (spoiled) {
+    clearTraySlot(spoiled);
+    toast(world, 'Spoiled patty binned — tray slot free');
     return 'place';
   }
   toast(world, 'Nothing to bin');
@@ -344,6 +443,7 @@ export function serveTicket(world, ticketId) {
   ticket.goneIn = 0.6; // the ticket lingers as a checkmark, then leaves
   world.plate = [];
   world.hand = null;
+  world.handPattyAge = 0;
   popup(world, 1180, 430, `+${gained}`, '#3f7d33');
   burst(world, 1180, 470, '#f7c948', 14);
   // Served with at least half their patience left, a new customer becomes
@@ -494,6 +594,18 @@ export function update(world, dt) {
     } else if (slot.state === 'done') {
       slot.t += dt;
       if (slot.t >= PATTY_BURN_SECONDS) { slot.state = 'burnt'; slot.t = 0; }
+    }
+  }
+
+  // Parked patties age on the holding tray. Freshness is finite: at the
+  // spoil limit the patty turns spoiled and blocks its slot until binned.
+  for (const slot of world.tray) {
+    if (slot.state !== 'fresh') continue;
+    slot.t += dt;
+    if (slot.t >= TRAY_SPOIL_SECONDS) {
+      slot.state = 'spoiled';
+      slot.t = TRAY_SPOIL_SECONDS;
+      toast(world, 'A parked patty spoiled — bin it');
     }
   }
 }

@@ -5,7 +5,7 @@
 
 import { VIEW, INGREDIENTS } from './config.js';
 
-const STATION_KEYS = { 1: 'bun', 2: 'grill', 3: 'lettuce', 4: 'tomato', 5: 'cheese', 6: 'bin' };
+const STATION_KEYS = { 1: 'bun', 2: 'grill', 3: 'lettuce', 4: 'tomato', 5: 'cheese', 6: 'bin', 7: 'tray' };
 
 export function attachInput(canvas, actions) {
   let mouse = { x: VIEW.width / 2, y: VIEW.height / 2, inside: false };

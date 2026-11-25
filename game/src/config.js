@@ -18,11 +18,16 @@ export const INGREDIENTS = {
   // A patty left on the grill too long. It can be picked up and binned, but
   // never served; it is not a station and has no key.
   burnt:   { key: '',  name: 'Burnt patty', colour: '#141210', dark: '#000000', station: 'Bin' },
+  // A cooked patty left on the holding tray too long. It is never served;
+  // the tray/bin interaction clears it instead of putting it in the hand.
+  spoiled: { key: '',  name: 'Spoiled patty', colour: '#77765f', dark: '#4b4f3f', station: 'Bin' },
 };
 
 export const PATTY_COOK_SECONDS = 4;
 export const PATTY_BURN_SECONDS = 5; // grace after done before it burns
 export const GRILL_SLOTS = 2;
+export const TRAY_SLOTS = 2;
+export const TRAY_SPOIL_SECONDS = 10; // parked patties stay fresh this long
 
 // ---------------------------------------------------------------- dishes
 // A dish is a name, a price and the ordered stack of ingredients on the
@@ -225,15 +230,17 @@ export const LAYOUT = {
   header: { x: 0, y: 0, w: 1280, h: 62 },
   board: { x: 16, y: 72, w: 1248, h: 108 },
   kitchen: { x: 0, y: 190, w: 1280, h: 380 },
-  // Stations sit on the counter, left to right. The bin is the last one:
-  // a narrow station so the row still ends before the assembly plate.
+  // Stations sit on the counter, left to right. The holding tray is next
+  // to the grill so a finished patty can be parked without crossing the
+  // kitchen; the bin remains the last station before the assembly plate.
   stations: [
-    { id: 'bun',     x: 24,  y: 470, w: 132, h: 150 },
-    { id: 'grill',   x: 166, y: 470, w: 204, h: 150 },
-    { id: 'lettuce', x: 380, y: 470, w: 132, h: 150 },
-    { id: 'tomato',  x: 522, y: 470, w: 132, h: 150 },
-    { id: 'cheese',  x: 664, y: 470, w: 132, h: 150 },
-    { id: 'bin',     x: 806, y: 470, w: 100, h: 150 },
+    { id: 'bun',     x: 12,  y: 470, w: 116, h: 150 },
+    { id: 'grill',   x: 132, y: 470, w: 184, h: 150 },
+    { id: 'tray',    x: 322, y: 470, w: 124, h: 150 },
+    { id: 'lettuce', x: 452, y: 470, w: 116, h: 150 },
+    { id: 'tomato',  x: 574, y: 470, w: 116, h: 150 },
+    { id: 'cheese',  x: 696, y: 470, w: 116, h: 150 },
+    { id: 'bin',     x: 818, y: 470, w: 88,  h: 150 },
   ],
   assembly: { x: 920, y: 400, w: 170, h: 220 },
   serve: { x: 1110, y: 400, w: 146, h: 220 },

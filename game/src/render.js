@@ -15,10 +15,10 @@
 // striped awnings, chalkboard menu, pendant lamps, sauce shelf, wall clock,
 // string lights, wainscot. Customers wait at the counter under their
 // tickets, diner-game style (their faces and a little patience bubble show
-// how long they have waited). Layout, hit areas, timings and mechanics are
-// untouched.
+// how long they have waited). The holding tray sits beside the grill in
+// the station row, with a freshness bar under each parked patty.
 
-import { DISHES, INGREDIENTS, DAYS, LAYOUT, PALETTE, UPGRADES, SHOP } from './config.js';
+import { DISHES, INGREDIENTS, DAYS, LAYOUT, PALETTE, UPGRADES, SHOP, TRAY_SPOIL_SECONDS } from './config.js';
 import { matchingTicket, pattyCookSeconds } from './world.js';
 
 function rr(ctx, x, y, w, h, r) {
@@ -127,11 +127,13 @@ export function drawIngredient(ctx, id, x, y, r, variant) {
         ctx.fill();
       }
     }
-  } else if (id === 'patty' || id === 'burnt') {
+  } else if (id === 'patty' || id === 'burnt' || id === 'spoiled') {
     // A grilled patty: a slightly irregular seared slab, diagonal grill
     // marks, char specks. A burnt patty is the same slab blackened, with
-    // ash instead of grill marks.
+    // ash instead of grill marks; a spoiled patty is dull olive-grey with
+    // mouldy spots, so the three states never read alike.
     const burnt = id === 'burnt';
+    const spoiled = id === 'spoiled';
     ctx.fillStyle = ing.dark;
     ctx.beginPath();
     ctx.moveTo(-r * 0.9, -r * 0.28);
@@ -156,7 +158,21 @@ export function drawIngredient(ctx, id, x, y, r, variant) {
     ctx.quadraticCurveTo(-r * 0.78, r * 0.4, -r * 0.78, r * 0.28);
     ctx.closePath();
     ctx.fill();
-    if (burnt) {
+    if (spoiled) {
+      // Dull mould spots instead of grill marks.
+      ctx.fillStyle = 'rgba(93,102,80,0.85)';
+      for (const [sx, sy, sr] of [[-0.45, -0.18, 0.13], [0.05, 0.08, 0.16], [0.45, -0.28, 0.11], [0.28, 0.24, 0.09]]) {
+        ctx.beginPath();
+        ctx.arc(sx * r, sy * r, sr * r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(210,214,190,0.55)';
+      for (const [sx, sy] of [[-0.2, 0.2], [0.55, 0.05]]) {
+        ctx.beginPath();
+        ctx.arc(sx * r, sy * r, r * 0.07, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (burnt) {
       // Ash specks.
       ctx.fillStyle = 'rgba(180,180,180,0.6)';
       for (const [ax, ay] of [[-0.4, -0.2], [0.15, 0.1], [0.45, -0.3], [0, -0.35]]) {
@@ -578,8 +594,10 @@ function drawStation(ctx, world, station, hover) {
   const { x, y, w, h } = station;
   // The grill station's id is 'grill', but its ingredient is the patty:
   // INGREDIENTS has no 'grill' key, so resolve the label through 'patty'.
-  // The bin is not an ingredient either; it has its own label and key.
+  // The tray and bin are not ingredients either; they have their own
+  // labels and keys.
   const label = station.id === 'bin' ? { station: 'Bin', key: '6' }
+    : station.id === 'tray' ? { station: 'Holding Tray', key: '7' }
     : INGREDIENTS[station.id === 'grill' ? 'patty' : station.id];
   ctx.save();
   if (hover) {
@@ -587,18 +605,20 @@ function drawStation(ctx, world, station, hover) {
     rr(ctx, x - 6, y - 8, w + 12, h + 10, 14);
     ctx.fill();
   }
-  // Name pill on top of the station.
-  const nameW = ctx.measureText(label.station).width + 30;
+  // Name pill on top of the station. Measure with the pill's own font so
+  // the narrower station row never lets neighbouring pills collide.
+  ctx.font = '800 12px system-ui, "Segoe UI", sans-serif';
+  const nameW = ctx.measureText(label.station.toUpperCase()).width + 24;
   pill(ctx, x + w / 2 - nameW / 2, y + 6, nameW, 22, PALETTE.cream, PALETTE.ink, 2);
-  text(ctx, label.station.toUpperCase(), x + w / 2, y + 17, 13, PALETTE.ink, 'center', '800');
+  text(ctx, label.station.toUpperCase(), x + w / 2, y + 17, 12, PALETTE.ink, 'center', '800');
   // Key chip at the bottom.
   pill(ctx, x + w / 2 - 22, y + h - 24, 44, 20, PALETTE.ink, PALETTE.ink, 2);
   text(ctx, `[${label.key}]`, x + w / 2, y + h - 14, 12, PALETTE.mustard, 'center', '800');
   if (station.id === 'bun') {
     // Wooden bun bin.
-    cardShadow(ctx, x + 18, y + 46, w - 36, 58, 8, 3);
+    cardShadow(ctx, x + 14, y + 46, w - 28, 58, 8, 3);
     ctx.fillStyle = '#a06a33';
-    rr(ctx, x + 18, y + 46, w - 36, 58, 8);
+    rr(ctx, x + 14, y + 46, w - 28, 58, 8);
     ctx.fill();
     ctx.strokeStyle = PALETTE.ink;
     ctx.lineWidth = 3;
@@ -606,11 +626,11 @@ function drawStation(ctx, world, station, hover) {
     ctx.strokeStyle = 'rgba(43,26,18,0.35)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x + 20, y + 75);
-    ctx.lineTo(x + w - 20, y + 75);
+    ctx.moveTo(x + 16, y + 75);
+    ctx.lineTo(x + w - 16, y + 75);
     ctx.stroke();
-    drawIngredient(ctx, 'bun', x + w / 2 - 26, y + 62, 20);
-    drawIngredient(ctx, 'bun', x + w / 2 + 26, y + 62, 20);
+    drawIngredient(ctx, 'bun', x + w / 2 - 22, y + 62, 20);
+    drawIngredient(ctx, 'bun', x + w / 2 + 22, y + 62, 20);
     drawIngredient(ctx, 'bun', x + w / 2, y + 88, 20);
   } else if (station.id === 'grill') {
     // Steel griddle with a warm glow underneath.
@@ -637,7 +657,7 @@ function drawStation(ctx, world, station, hover) {
       ctx.stroke();
     }
     world.grill.forEach((slot, i) => {
-      const cx = x + 58 + i * 94;
+      const cx = x + w / 2 + (i - (world.grill.length - 1) / 2) * 84;
       const cy = y + 76;
       if (slot.state === 'empty') {
         ctx.strokeStyle = '#8a8580';
@@ -695,9 +715,78 @@ function drawStation(ctx, world, station, hover) {
         }
       }
     });
+  } else if (station.id === 'tray') {
+    // Warming tray with two wells. A parked patty's freshness bar drains
+    // over TRAY_SPOIL_SECONDS; a spoiled patty turns dull and mouldy and
+    // is labelled so the player knows to click it into the bin.
+    ctx.fillStyle = 'rgba(245,158,11,0.22)';
+    rr(ctx, x + 4, y + 32, w - 8, 90, 10);
+    ctx.fill();
+    cardShadow(ctx, x + 7, y + 36, w - 14, 82, 8, 3);
+    ctx.fillStyle = PALETTE.steelLight;
+    rr(ctx, x + 7, y + 36, w - 14, 82, 8);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = '#2a2725';
+    rr(ctx, x + 12, y + 42, w - 24, 70, 6);
+    ctx.fill();
+    // Warming heat marks under the wells.
+    ctx.strokeStyle = 'rgba(245,158,11,0.55)';
+    ctx.lineWidth = 2;
+    for (const hx of [x + 32, x + 92]) {
+      ctx.beginPath();
+      ctx.moveTo(hx - 16, y + 108);
+      ctx.lineTo(hx + 16, y + 108);
+      ctx.stroke();
+    }
+    world.tray.forEach((slot, i) => {
+      const cx = x + 32 + i * 60;
+      const cy = y + 76;
+      ctx.fillStyle = '#171412';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#8a8580';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      if (slot.state === 'empty') {
+        ctx.strokeStyle = '#8a8580';
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (slot.state === 'fresh') {
+        drawIngredient(ctx, 'patty', cx, cy, 20);
+        const left = Math.max(0, 1 - slot.t / TRAY_SPOIL_SECONDS);
+        ctx.fillStyle = '#eadfc6';
+        rr(ctx, cx - 22, y + 104, 44, 7, 4);
+        ctx.fill();
+        ctx.strokeStyle = PALETTE.ink;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = left > 0.5 ? PALETTE.green : left > 0.25 ? PALETTE.amber : PALETTE.red;
+        if (left > 0) {
+          rr(ctx, cx - 21, y + 105, 42 * left, 5, 3);
+          ctx.fill();
+        }
+      } else {
+        drawIngredient(ctx, 'spoiled', cx, cy, 20);
+        pill(ctx, cx - 28, y + 34, 56, 18, '#5d6650', PALETTE.red, 2);
+        text(ctx, 'SPOILED', cx, y + 43, 10, '#fff', 'center', '900');
+        ctx.fillStyle = '#eadfc6';
+        rr(ctx, cx - 22, y + 104, 44, 7, 4);
+        ctx.fill();
+        ctx.strokeStyle = PALETTE.red;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    });
   } else if (station.id === 'bin') {
     // Steel trash can with a red lid: click it to throw away what is held,
-    // or a burnt patty off the grill.
+    // a burnt patty off the grill, or a spoiled patty off the tray.
     const cx = x + w / 2;
     cardShadow(ctx, cx - 34, y + 44, 68, 76, 8, 3);
     // Lid with a handle.
@@ -733,9 +822,9 @@ function drawStation(ctx, world, station, hover) {
     }
   } else {
     // Crates: a pile of the ingredient on a wooden crate.
-    cardShadow(ctx, x + 18, y + 52, w - 36, 52, 8, 3);
+    cardShadow(ctx, x + 14, y + 52, w - 28, 52, 8, 3);
     ctx.fillStyle = '#a06a33';
-    rr(ctx, x + 18, y + 52, w - 36, 52, 8);
+    rr(ctx, x + 14, y + 52, w - 28, 52, 8);
     ctx.fill();
     ctx.strokeStyle = PALETTE.ink;
     ctx.lineWidth = 3;
@@ -743,11 +832,11 @@ function drawStation(ctx, world, station, hover) {
     ctx.strokeStyle = 'rgba(43,26,18,0.35)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x + 20, y + 78);
-    ctx.lineTo(x + w - 20, y + 78);
+    ctx.moveTo(x + 16, y + 78);
+    ctx.lineTo(x + w - 16, y + 78);
     ctx.stroke();
-    drawIngredient(ctx, station.id, x + w / 2 - 24, y + 66, 19);
-    drawIngredient(ctx, station.id, x + w / 2 + 24, y + 66, 19);
+    drawIngredient(ctx, station.id, x + w / 2 - 22, y + 66, 19);
+    drawIngredient(ctx, station.id, x + w / 2 + 22, y + 66, 19);
     drawIngredient(ctx, station.id, x + w / 2, y + 88, 19);
   }
   ctx.restore();
@@ -893,7 +982,7 @@ function drawMenuStrip(ctx, world) {
     text(ctx, `$${dish.price}`, ix + 6, y + 12, 14, PALETTE.mustard, 'left', '800');
     x = ix + 56;
   }
-  text(ctx, 'Click a station (or 1–6) to pick up · Click the plate to add · Space to serve · Right-click / Esc cancels · P to pause · M to mute', 640, y + 44, 13, '#cbb98f', 'center', '700');
+  text(ctx, 'Click a station (or 1–7) · [7] parks a cooked patty · Click the plate to add · Space to serve · Right-click / Esc cancels · P pause · M mute', 640, y + 44, 13, '#cbb98f', 'center', '700');
   if (world.combo >= 2) {
     pill(ctx, 1080, y + 2, 176, 26, '#e8590c', PALETTE.ink, 3);
     text(ctx, `COMBO ×${world.combo}`, 1168, y + 15, 15, '#fff', 'center', '900');
@@ -1718,11 +1807,11 @@ export function render(ctx, world, ui) {
     const y = overlay(ctx, 'SIZZLE STATION', [
       'A food truck: 7 days, 7 stops. Build your regulars.',
       'Orders come in, you build them, you ring the bell.',
-      'Patties burn if you forget the grill.',
+      'Park cooked patties on the tray — use within 10s.',
       'Earn money: unlock signatures, buy upgrades.',
       'Serve with patience left — win a regular who follows you.',
       'Build bottom to top: start with the bottom bun.',
-      'Stations 1–6 · Space serves · Right-click cancels.',
+      'Stations 1–7 · Space serves · Right-click cancels.',
     ], PALETTE.red);
     // Ingredient strip under the title.
     const ids = ['bun', 'patty', 'lettuce', 'tomato', 'cheese'];
