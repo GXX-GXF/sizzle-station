@@ -18,7 +18,7 @@
 // how long they have waited). Layout, hit areas, timings and mechanics are
 // untouched.
 
-import { DISHES, INGREDIENTS, LEVELS, LAYOUT, PALETTE, UPGRADES, SHOP } from './config.js';
+import { DISHES, INGREDIENTS, DAYS, LAYOUT, PALETTE, UPGRADES, SHOP } from './config.js';
 import { matchingTicket, pattyCookSeconds } from './world.js';
 
 function rr(ctx, x, y, w, h, r) {
@@ -514,7 +514,19 @@ function drawTicket(ctx, ticket, x, y, w, h) {
   ctx.lineTo(x + 3, y + 32);
   ctx.closePath();
   ctx.fill();
-  text(ctx, dish.name, x + 14, y + 17, 17, '#fff6e3', 'left', '900');
+  // A regular (a starred customer who followed the truck) carries a gold
+  // star before their dish name, and the name shifts right to make room.
+  let nameX = x + 14;
+  if (ticket.regular) {
+    ctx.fillStyle = PALETTE.gold;
+    star(ctx, x + 22, y + 17, 9, 4, 5);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    nameX = x + 38;
+  }
+  text(ctx, dish.name, nameX, y + 17, 17, '#fff6e3', 'left', '900');
   // Price chip.
   pill(ctx, x + w - 68, y + 7, 56, 18, PALETTE.mustard, PALETTE.ink, 2);
   text(ctx, `$${dish.price}`, x + w - 40, y + 16, 13, PALETTE.ink, 'center', '800');
@@ -860,7 +872,7 @@ function drawServe(ctx, world, rect, hover) {
 }
 
 function drawMenuStrip(ctx, world) {
-  const level = LEVELS[world.levelIndex];
+  const day = DAYS[world.dayIndex];
   const y = 652;
   // Dark footer board with a mustard rule on top.
   ctx.fillStyle = PALETTE.board;
@@ -869,7 +881,7 @@ function drawMenuStrip(ctx, world) {
   ctx.fillRect(0, 640, 1280, 4);
   text(ctx, 'MENU', 24, y + 12, 14, PALETTE.mustard, 'left', '900');
   let x = 100;
-  for (const dishId of level.dishes) {
+  for (const dishId of day.dishes) {
     const dish = DISHES[dishId];
     text(ctx, dish.short, x, y + 12, 15, '#fff6e3', 'left', '800');
     let ix = x + 84;
@@ -1042,6 +1054,16 @@ function drawCustomer(ctx, ticket, x) {
     ctx.quadraticCurveTo(x + headR + 5, headY - 4, x + headR - 2, headY - 1);
     ctx.quadraticCurveTo(x + headR - 8, headY - 4, x + headR - 2, headY - 12);
     ctx.fill();
+  }
+  if (ticket.regular) {
+    // A gold star badge at the top-right of the head: this customer is a
+    // regular who followed the truck to this stop.
+    ctx.fillStyle = PALETTE.gold;
+    star(ctx, x + headR - 1, headY - headR + 3, 10, 4.5, 5);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
   }
 }
 
@@ -1492,14 +1514,15 @@ function drawHeader(ctx, world) {
   // Logo badge.
   pill(ctx, 16, 12, 252, 38, PALETTE.red, PALETTE.ink, 3);
   display(ctx, 'SIZZLE STATION', 142, 32, 21, '#fff6e3', 'center', PALETTE.redDark);
-  const level = LEVELS[world.levelIndex];
-  text(ctx, `${level.name}  ·  Shift ${world.levelIndex + 1}/3`, 330, 32, 16, '#fff8e7', 'left', '700');
+  const day = DAYS[world.dayIndex];
+  text(ctx, `Day ${world.dayIndex + 1}/7 · ${day.name}`, 330, 32, 16, '#fff8e7', 'left', '700');
   // Timer in a cream pill; red when the clock is nearly out.
   const urgent = world.timeLeft <= 10 && world.screen === 'playing';
   pill(ctx, 585, 10, 110, 42, urgent ? PALETTE.red : PALETTE.cream, PALETTE.ink, 3);
   display(ctx, fmtTime(world.timeLeft), 640, 32, 28, urgent ? '#fff' : PALETTE.ink, 'center', urgent ? PALETTE.redDark : '#d8c9a8');
-  text(ctx, `MONEY $${world.money}`, 830, 32, 18, PALETTE.mustard, 'right', '900');
-  text(ctx, `SCORE ${world.score}`, 980, 32, 22, PALETTE.gold, 'right', '900');
+  text(ctx, `MONEY $${world.money}`, 810, 32, 17, PALETTE.mustard, 'right', '900');
+  text(ctx, `SCORE ${world.score}`, 950, 32, 21, PALETTE.gold, 'right', '900');
+  text(ctx, `★ ${world.regulars}`, 1075, 32, 17, PALETTE.gold, 'right', '900');
   text(ctx, `Served ${world.served} · Walked out ${world.expired}`, 980, 52, 12, '#cbb98f', 'right', '700');
   // Mute button (rect is the click target in main.js — keep it).
   pill(ctx, 1196, 14, 64, 34, '#4a4238', PALETTE.mustard, 2);
@@ -1594,10 +1617,10 @@ function drawUpgradeIcon(ctx, id, x, y) {
   }
 }
 
-// The between-shifts shop: three one-off upgrades on cards, the wallet
-// up top, and a NEXT SHIFT button. Geometry comes from SHOP in config.js
-// (the same rects main.js hit-tests), so the drawing and the clicks can
-// never drift apart.
+// The between-days shop: three one-off upgrades on the top row and three
+// signature burgers to unlock below, the wallet up top, and a NEXT STOP
+// button. Geometry comes from SHOP in config.js (the same rects main.js
+// hit-tests), so the drawing and the clicks can never drift apart.
 function drawShop(ctx, world) {
   ctx.fillStyle = 'rgba(30,20,10,0.6)';
   ctx.fillRect(0, 0, 1280, 720);
@@ -1609,17 +1632,26 @@ function drawShop(ctx, world) {
   ctx.strokeStyle = PALETTE.ink;
   ctx.lineWidth = 4;
   ctx.stroke();
-  const level = LEVELS[world.levelIndex];
-  const stars = '★'.repeat(world.shiftStars || 0) + '☆'.repeat(3 - (world.shiftStars || 0));
-  display(ctx, 'SHOP', 640, 152, 36, PALETTE.red);
-  text(ctx, `${level.name} — done!  ${stars}   Served ${world.shiftServed} · Walked out ${world.shiftExpired}`, 640, 192, 17, PALETTE.inkSoft, 'center', '700');
+  const day = DAYS[world.dayIndex];
+  const next = DAYS[world.dayIndex + 1];
+  const stars = '★'.repeat(world.dayStars || 0) + '☆'.repeat(3 - (world.dayStars || 0));
+  display(ctx, 'SHOP', 640, 98, 36, PALETTE.red);
+  text(ctx, `Day ${world.dayIndex + 1} — ${day.name}, done!  ${stars}   Served ${world.dayServed} · Walked out ${world.dayExpired} · ★ ${world.regulars} regulars`, 640, 130, 16, PALETTE.inkSoft, 'center', '700');
+  if (next) {
+    text(ctx, `Next stop: Day ${world.dayIndex + 2} — ${next.name}. ${next.flavour}`, 640, 154, 15, PALETTE.inkSoft, 'center', '700');
+  }
   // The wallet, big and gold: this is the number the shop spends.
-  pill(ctx, 640 - 110, 212, 220, 40, PALETTE.board, PALETTE.ink, 3);
-  text(ctx, `MONEY $${world.money}`, 640, 232, 24, PALETTE.gold, 'center', '900');
+  pill(ctx, 640 - 110, 170, 220, 40, PALETTE.board, PALETTE.ink, 3);
+  text(ctx, `MONEY $${world.money}`, 640, 191, 24, PALETTE.gold, 'center', '900');
+  // Section labels above each card row.
+  text(ctx, 'UPGRADES', 140, 232, 15, PALETTE.ink, 'left', '900');
+  text(ctx, 'SIGNATURE BURGERS — unlock a new recipe', 140, 412, 15, PALETTE.ink, 'left', '900');
   for (const card of SHOP.cards) {
-    const up = UPGRADES[card.id];
-    const owned = world.upgrades[card.id];
-    const afford = world.money >= up.price;
+    const isSig = card.kind === 'signature';
+    const item = isSig ? DISHES[card.id] : UPGRADES[card.id];
+    const price = isSig ? item.cost : item.price;
+    const owned = isSig ? world.signatures[card.id] : world.upgrades[card.id];
+    const afford = world.money >= price;
     cardShadow(ctx, card.x, card.y, card.w, card.h, 14, 4);
     ctx.fillStyle = owned ? '#eef6e6' : PALETTE.paper;
     rr(ctx, card.x, card.y, card.w, card.h, 14);
@@ -1628,38 +1660,50 @@ function drawShop(ctx, world) {
     ctx.lineWidth = 3;
     ctx.stroke();
     const cx = card.x + card.w / 2;
-    text(ctx, up.name, cx, card.y + 32, 20, PALETTE.ink, 'center', '900');
-    text(ctx, up.desc, cx, card.y + 64, 14, PALETTE.inkSoft, 'center', '700');
-    drawUpgradeIcon(ctx, card.id, cx, card.y + 112);
+    text(ctx, item.name, cx, card.y + 26, 19, PALETTE.ink, 'center', '900');
+    text(ctx, item.desc, cx, card.y + 50, 13, PALETTE.inkSoft, 'center', '700');
+    if (isSig) {
+      // The recipe, so the player knows what they are unlocking.
+      const ings = item.ingredients;
+      const gap = 24;
+      const startX = cx - ((ings.length - 1) * gap) / 2;
+      ings.forEach((ing, i) => {
+        const variant = ing === 'bun' ? (i === 0 ? 'bottom' : 'top') : undefined;
+        drawIngredient(ctx, ing, startX + i * gap, card.y + 86, 11, variant);
+      });
+    } else {
+      drawUpgradeIcon(ctx, card.id, cx, card.y + 86);
+    }
     // The buy button carries the price, so the card needs no price line.
     const b = card.buy;
     if (owned) {
       pill(ctx, b.x, b.y, b.w, b.h, PALETTE.green, PALETTE.ink, 3);
-      text(ctx, 'OWNED', cx, b.y + b.h / 2 + 1, 17, '#fff', 'center', '900');
+      text(ctx, 'OWNED', cx, b.y + b.h / 2 + 1, 16, '#fff', 'center', '900');
     } else if (afford) {
       pill(ctx, b.x, b.y, b.w, b.h, PALETTE.mustard, PALETTE.ink, 3);
-      text(ctx, `BUY $${up.price}`, cx, b.y + b.h / 2 + 1, 17, PALETTE.ink, 'center', '900');
+      text(ctx, `BUY $${price}`, cx, b.y + b.h / 2 + 1, 16, PALETTE.ink, 'center', '900');
     } else {
       pill(ctx, b.x, b.y, b.w, b.h, '#cbb98f', PALETTE.ink, 3);
-      text(ctx, `BUY $${up.price}`, cx, b.y + b.h / 2 + 1, 17, '#8a7a5e', 'center', '900');
+      text(ctx, `BUY $${price}`, cx, b.y + b.h / 2 + 1, 16, '#8a7a5e', 'center', '900');
     }
   }
-  // Next shift.
+  // Next stop.
   const n = SHOP.next;
   cardShadow(ctx, n.x, n.y, n.w, n.h, 22, 4);
   pill(ctx, n.x, n.y, n.w, n.h, PALETTE.green, PALETTE.ink, 3);
-  text(ctx, 'NEXT SHIFT', 640, n.y + n.h / 2 + 1, 20, '#fff', 'center', '900');
-  // A toast (bought / not enough money) floats in the gap between the
-  // panel bottom and the footer, where it covers nothing.
+  text(ctx, 'NEXT STOP', 640, n.y + n.h / 2 + 1, 20, '#fff', 'center', '900');
+  // A toast (bought / not enough money) floats below the panel, where it
+  // covers nothing.
   if (world.message) {
+    ctx.font = '700 15px system-ui, "Segoe UI", sans-serif';
     const w = ctx.measureText(world.message.text).width + 36;
     ctx.fillStyle = 'rgba(43,26,18,0.92)';
-    rr(ctx, 640 - w / 2, 612, w, 28, 14);
+    rr(ctx, 640 - w / 2, 670, w, 28, 14);
     ctx.fill();
     ctx.strokeStyle = PALETTE.mustard;
     ctx.lineWidth = 2;
     ctx.stroke();
-    text(ctx, world.message.text, 640, 626, 15, '#fff8e7', 'center', '700');
+    text(ctx, world.message.text, 640, 685, 15, '#fff8e7', 'center', '700');
   }
 }
 
@@ -1672,12 +1716,13 @@ export function render(ctx, world, ui) {
     drawHeader(ctx, world);
     drawMenuStrip(ctx, world);
     const y = overlay(ctx, 'SIZZLE STATION', [
-      'A one-screen burger joint. Orders come in, you build them,',
-      'you ring the bell. Patties burn if you forget the grill.',
-      'Earn money, spend it on upgrades between shifts.',
+      'A food truck: 7 days, 7 stops. Build your regulars.',
+      'Orders come in, you build them, you ring the bell.',
+      'Patties burn if you forget the grill.',
+      'Earn money: unlock signatures, buy upgrades.',
+      'Serve with patience left — win a regular who follows you.',
       'Build bottom to top: start with the bottom bun.',
-      'Click a station (1–6) to pick up. Click the plate to stack.',
-      'Space serves. Right-click / Esc cancels. The bin takes trash.',
+      'Stations 1–6 · Space serves · Right-click cancels.',
     ], PALETTE.red);
     // Ingredient strip under the title.
     const ids = ['bun', 'patty', 'lettuce', 'tomato', 'cheese'];
@@ -1748,25 +1793,25 @@ export function render(ctx, world, ui) {
     text(ctx, world.message.text, 640, 202, 15, '#fff8e7', 'center', '700');
   }
   if (world.screen === 'shiftEnd') {
-    const stars = '★'.repeat(world.shiftStars || 0) + '☆'.repeat(3 - (world.shiftStars || 0));
-    const y = overlay(ctx, `${LEVELS[world.levelIndex].name} — done!`, [
+    const stars = '★'.repeat(world.dayStars || 0) + '☆'.repeat(3 - (world.dayStars || 0));
+    const y = overlay(ctx, `${DAYS[world.dayIndex].name} — done!`, [
       `${stars}`,
-      `Served ${world.shiftServed} · Walked out ${world.shiftExpired} · Score ${world.score}`,
-      world.levelIndex + 1 < LEVELS.length ? 'Next shift: more dishes, faster orders.' : 'That was the last shift — see your final score!',
+      `Served ${world.dayServed} · Walked out ${world.dayExpired} · Score ${world.score}`,
+      world.dayIndex + 1 < DAYS.length ? 'Next stop coming up.' : 'That was the last stop!',
     ], PALETTE.greenDark);
     ctaButton(ctx, 'Click or press Enter to continue', y + 30, PALETTE.green, '#fff');
   } else if (world.screen === 'failed') {
-    const y = overlay(ctx, 'Shift failed', [
-      'Three customers walked out. The kitchen cannot run like that.',
+    const y = overlay(ctx, 'Day failed', [
+      'Three customers walked out. The truck cannot run like that.',
       `Score so far: ${world.score}`,
     ], PALETTE.red);
-    ctaButton(ctx, 'Click or press Enter to retry this shift', y + 30, PALETTE.red, '#fff');
+    ctaButton(ctx, 'Click or press Enter to retry this day', y + 30, PALETTE.red, '#fff');
   } else if (world.screen === 'gameover') {
-    const y = overlay(ctx, 'Closing time!', [
+    const y = overlay(ctx, 'Tour Complete!', [
       `Final score: ${world.score}   ·   Served: ${world.served}   ·   Walked out: ${world.expired}`,
-      `Best combo: ×${world.bestCombo}   ·   Stars earned: ${'★'.repeat(Math.min(9, world.stars))}`,
+      `Regulars won: ${world.regulars}   ·   Best combo: ×${world.bestCombo}   ·   Stars: ${world.stars}/21`,
       '',
-      'Thanks for playing Sizzle Station.',
+      '7 days, 7 stops — thanks for riding with Sizzle Station.',
     ], PALETTE.red);
     ctaButton(ctx, 'Press R to play again', y + 30);
   } else if (world.screen === 'shop') {

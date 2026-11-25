@@ -58,52 +58,137 @@ export const DISHES = {
     ingredients: ['bun', 'lettuce', 'tomato', 'cheese', 'bun'],
     accent: '#69b455',
   },
+  // Signature burgers: recipes the player invents and unlocks with money
+  // in the shop. They only enter the order pool once unlocked. `cost` is
+  // the unlock price; `price` is what the burger sells for. They use only
+  // the five existing ingredients, distinct by length and composition.
+  tower: {
+    name: 'The Tower',
+    short: 'Tower',
+    price: 200,
+    ingredients: ['bun', 'patty', 'patty', 'patty', 'cheese', 'lettuce', 'tomato', 'bun'],
+    accent: '#8a5a2b',
+    signature: true,
+    cost: 250,
+    desc: 'Triple-patty tower, 8 layers. Sells for $200.',
+  },
+  melt: {
+    name: 'Double Melt',
+    short: 'Double Melt',
+    price: 240,
+    ingredients: ['bun', 'patty', 'cheese', 'cheese', 'lettuce', 'tomato', 'bun'],
+    accent: '#f7c948',
+    signature: true,
+    cost: 400,
+    desc: 'Double cheese, extra gooey. Sells for $240.',
+  },
+  garden: {
+    name: 'Garden Deluxe',
+    short: 'Garden Deluxe',
+    price: 180,
+    ingredients: ['bun', 'lettuce', 'lettuce', 'tomato', 'tomato', 'cheese', 'bun'],
+    accent: '#69b455',
+    signature: true,
+    cost: 550,
+    desc: 'Double veggie, double fresh. Sells for $180.',
+  },
 };
 
-// ---------------------------------------------------------------- levels
-// Three shifts. Each shift is a fixed clock; orders arrive faster and the
-// menu grows as the night goes on. Patience is how long a ticket waits
-// before the customer walks out.
+// The signature dish ids, in unlock order.
+export const SIGNATURE_IDS = Object.keys(DISHES).filter((id) => DISHES[id].signature);
 
-export const LEVELS = [
+// ---------------------------------------------------------------- tour days
+// The food truck tours for seven days, one stop per day. Each day is a
+// fixed clock; the crowd, its patience and its generosity change with the
+// location. Patience is how long a ticket waits before the customer walks
+// out. tipMult scales the patience tip (the Night Market pays big tips).
+// The base dish pool grows early on; signature burgers join the pool once
+// the player unlocks them (see SIGNATURE_IDS above).
+
+export const DAYS = [
   {
-    name: 'Lunch Rush',
+    name: 'Riverside Park',
+    flavour: 'A gentle start by the river.',
     duration: 75,
-    spawnEvery: 8,
+    spawnEvery: 4.5,
     maxTickets: 3,
-    dishes: ['classic', 'cheese'],
+    dishes: ['classic', 'cheese', 'veggie'],
     patience: 34,
+    tipMult: 1,
   },
   {
-    name: 'Dinner Rush',
+    name: 'Campus Quad',
+    flavour: 'Students between classes, hungry and in a hurry.',
     duration: 80,
-    spawnEvery: 6.5,
-    maxTickets: 3,
-    dishes: ['classic', 'cheese', 'double'],
-    patience: 31,
+    spawnEvery: 3.8,
+    maxTickets: 4,
+    dishes: ['classic', 'cheese', 'veggie', 'double'],
+    patience: 30,
+    tipMult: 1,
   },
   {
-    name: 'Closing Rush',
-    duration: 85,
-    spawnEvery: 5,
+    name: 'Downtown Lunch',
+    flavour: 'The office rush: impatient, but they tip on time.',
+    duration: 80,
+    spawnEvery: 3.5,
     maxTickets: 4,
     dishes: ['classic', 'cheese', 'double', 'veggie'],
+    patience: 26,
+    tipMult: 1,
+  },
+  {
+    name: 'Night Market',
+    flavour: 'Lanterns, crowds and big tippers.',
+    duration: 85,
+    spawnEvery: 4.0,
+    maxTickets: 4,
+    dishes: ['classic', 'cheese', 'double', 'veggie'],
+    patience: 36,
+    tipMult: 1.5,
+  },
+  {
+    name: 'Beach Boardwalk',
+    flavour: 'Weekend strollers, sandy and easygoing.',
+    duration: 85,
+    spawnEvery: 4.0,
+    maxTickets: 4,
+    dishes: ['classic', 'cheese', 'double', 'veggie'],
+    patience: 32,
+    tipMult: 1,
+  },
+  {
+    name: 'Stadium Game Day',
+    flavour: 'A roaring crowd with no time to wait.',
+    duration: 85,
+    spawnEvery: 3.5,
+    maxTickets: 5,
+    dishes: ['classic', 'cheese', 'double', 'veggie'],
     patience: 28,
+    tipMult: 1,
+  },
+  {
+    name: 'Food Festival',
+    flavour: 'The finale: the biggest crowd of the tour.',
+    duration: 90,
+    spawnEvery: 3.5,
+    maxTickets: 5,
+    dishes: ['classic', 'cheese', 'double', 'veggie'],
+    patience: 30,
+    tipMult: 1,
   },
 ];
 
-export const MAX_EXPIRED_PER_SHIFT = 3; // a third walk-out ends the shift
+export const MAX_EXPIRED_PER_DAY = 3; // a third walk-out ends the day
 export const SERVE_BONUS_MAX = 50;      // tip for serving with patience left
 export const COMBO_STEP = 5;            // extra points per streak step
 export const COMBO_CAP = 50;
 export const WRONG_SERVE_PENALTY = 25;
 
 // ---------------------------------------------------------------- shop
-// Between shifts the player spends the money they earned on one-off
-// upgrades. Score is the final metric and is never reduced by spending;
-// money is the spendable wallet. Each upgrade is bought once and applies
-// to every shift after it is bought. Prices are set so a decent shift
-// (~$300–500 earned) buys 1–2 upgrades per shop visit.
+// Between days the player spends the money they earned on one-off
+// upgrades and on unlocking signature burgers. Score is the final metric
+// and is never reduced by spending; money is the spendable wallet. Each
+// item is bought once and applies to every day after it is bought.
 
 export const TURBO_COOK_SECONDS = 3; // Turbo Grill: patties cook in 3s
 export const CALM_PATIENCE_MULT = 1.3; // Calm Customers: patience x1.3
@@ -117,14 +202,18 @@ export const UPGRADES = {
 
 // Shop panel geometry (1280x720 view). The buy rects are explicit so the
 // drawing in render.js and the hit test in main.js can never drift apart.
+// Two card rows: upgrades on top, signature burgers below.
 export const SHOP = {
-  panel: { x: 140, y: 110, w: 1000, h: 500 },
+  panel: { x: 100, y: 60, w: 1080, h: 600 },
   cards: [
-    { id: 'turbo', x: 170, y: 260, w: 300, h: 230, buy: { x: 250, y: 420, w: 140, h: 40 } },
-    { id: 'calm',  x: 490, y: 260, w: 300, h: 230, buy: { x: 570, y: 420, w: 140, h: 40 } },
-    { id: 'tips',  x: 810, y: 260, w: 300, h: 230, buy: { x: 890, y: 420, w: 140, h: 40 } },
+    { id: 'turbo',  kind: 'upgrade',   x: 140, y: 240, w: 320, h: 150, buy: { x: 230, y: 348, w: 140, h: 36 } },
+    { id: 'calm',   kind: 'upgrade',   x: 480, y: 240, w: 320, h: 150, buy: { x: 570, y: 348, w: 140, h: 36 } },
+    { id: 'tips',   kind: 'upgrade',   x: 820, y: 240, w: 320, h: 150, buy: { x: 910, y: 348, w: 140, h: 36 } },
+    { id: 'tower',  kind: 'signature', x: 140, y: 420, w: 320, h: 150, buy: { x: 230, y: 528, w: 140, h: 36 } },
+    { id: 'melt',   kind: 'signature', x: 480, y: 420, w: 320, h: 150, buy: { x: 570, y: 528, w: 140, h: 36 } },
+    { id: 'garden', kind: 'signature', x: 820, y: 420, w: 320, h: 150, buy: { x: 910, y: 528, w: 140, h: 36 } },
   ],
-  next: { x: 520, y: 540, w: 240, h: 44 },
+  next: { x: 520, y: 590, w: 240, h: 44 },
 };
 
 // ---------------------------------------------------------------- layout

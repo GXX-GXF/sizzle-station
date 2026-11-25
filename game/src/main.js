@@ -4,7 +4,7 @@
 // of playing, for screenshots.
 
 import { VIEW, LAYOUT, SHOP } from './config.js';
-import { createWorld, startGame, update, advance, pickFromStation, placeOnPlate, serveTicket, serveBest, cancelHeld, discardInBin, buyUpgrade } from './world.js';
+import { createWorld, startGame, update, advance, pickFromStation, placeOnPlate, serveTicket, serveBest, cancelHeld, discardInBin, buyUpgrade, buySignature } from './world.js';
 import { render } from './render.js';
 import { attachInput } from './input.js';
 import { sfx, unlockAudio, toggleMute, startSizzle, stopSizzle } from './audio.js';
@@ -27,7 +27,7 @@ window.__sizzle = {
   world,
   version: 1,
   update,
-  actions: { startGame, advance, pickFromStation, placeOnPlate, serveBest, serveTicket, cancelHeld, discardInBin, buyUpgrade },
+  actions: { startGame, advance, pickFromStation, placeOnPlate, serveBest, serveTicket, cancelHeld, discardInBin, buyUpgrade, buySignature },
 };
 
 function playEvent(event) {
@@ -74,9 +74,13 @@ function onTap(x, y) {
   if (world.screen === 'title') { startGame(world); sfx.level(); return; }
   if (world.screen === 'shop') {
     // The shop is the one overlay where a tap is not a blanket advance:
-    // a buy button buys, NEXT SHIFT advances, anywhere else does nothing.
+    // a buy button buys (an upgrade or a signature unlock), NEXT SHIFT
+    // advances, anywhere else does nothing.
     for (const card of SHOP.cards) {
-      if (inRect(x, y, card.buy)) { playEvent(buyUpgrade(world, card.id)); return; }
+      if (inRect(x, y, card.buy)) {
+        playEvent(card.kind === 'signature' ? buySignature(world, card.id) : buyUpgrade(world, card.id));
+        return;
+      }
     }
     if (inRect(x, y, SHOP.next)) { playEvent(advance(world)); return; }
     return;

@@ -4,10 +4,10 @@
 // does when the player does nothing.
 
 import {
-  DISHES, LEVELS, INGREDIENTS, PATTY_COOK_SECONDS, PATTY_BURN_SECONDS,
-  GRILL_SLOTS, MAX_EXPIRED_PER_SHIFT, SERVE_BONUS_MAX, COMBO_STEP,
+  DISHES, DAYS, INGREDIENTS, PATTY_COOK_SECONDS, PATTY_BURN_SECONDS,
+  GRILL_SLOTS, MAX_EXPIRED_PER_DAY, SERVE_BONUS_MAX, COMBO_STEP,
   COMBO_CAP, WRONG_SERVE_PENALTY, TURBO_COOK_SECONDS, CALM_PATIENCE_MULT,
-  BIG_TIP_MULT, UPGRADES,
+  BIG_TIP_MULT, UPGRADES, SIGNATURE_IDS,
 } from './config.js';
 import { mulberry32, pick } from './random.js';
 
@@ -18,8 +18,28 @@ export function pattyCookSeconds(world) {
 }
 
 function patienceSeconds(world) {
-  const base = levelOf(world).patience;
+  const base = dayOf(world).patience;
   return Math.round(base * (world.upgrades.calm ? CALM_PATIENCE_MULT : 1));
+}
+
+// The dishes that can be ordered today: the day's base pool plus every
+// signature burger the player has unlocked. A signature only appears in
+// orders once it is unlocked.
+export function availableDishes(world) {
+  const unlocked = SIGNATURE_IDS.filter((id) => world.signatures[id]);
+  return dayOf(world).dishes.concat(unlocked);
+}
+
+// Pick a dish for a new ticket. A regular (a starred customer who follows
+// the truck) leans to the pricier end of the menu; everyone else orders
+// from the whole available pool.
+function pickDish(world, isRegular) {
+  const pool = availableDishes(world);
+  if (isRegular) {
+    const fancy = pool.filter((id) => DISHES[id].price >= 120);
+    if (fancy.length > 0) return pick(world.rand, fancy);
+  }
+  return pick(world.rand, pool);
 }
 
 let nextTicketId = 1;
@@ -29,13 +49,16 @@ export function createWorld(seed = 1) {
     seed,
     rand: mulberry32(seed),
     screen: 'title', // title | playing | shiftEnd | shop | gameover | failed
-    levelIndex: 0,
-    timeLeft: LEVELS[0].duration,
+    dayIndex: 0,
+    timeLeft: DAYS[0].duration,
     spawnIn: 1.2,
     score: 0,
     money: 0, // spendable wallet: grows with every serve, spent in the shop.
     // Score is the final metric and is never reduced by spending.
     upgrades: { turbo: false, calm: false, tips: false },
+    signatures: { tower: false, melt: false, garden: false },
+    regulars: 0, // customers won over: they follow the truck to later stops
+    regularsToStar: 0, // regulars still to appear as starred customers today
     served: 0,
     expired: 0,
     combo: 0,
@@ -49,32 +72,35 @@ export function createWorld(seed = 1) {
     particles: [],
     popups: [],
     message: null, // a short toast, { text, t }
-    shiftServed: 0,
-    shiftExpired: 0,
+    dayServed: 0,
+    dayExpired: 0,
     lastServedDish: null,
     servedFlash: 0, // seconds the serve window glows after a serve
   };
 }
 
-export function levelOf(world) {
-  return LEVELS[world.levelIndex];
+export function dayOf(world) {
+  return DAYS[world.dayIndex];
 }
 
-export function startShift(world, levelIndex) {
-  const level = LEVELS[levelIndex];
-  world.levelIndex = levelIndex;
-  world.timeLeft = level.duration;
+export function startDay(world, dayIndex) {
+  const day = DAYS[dayIndex];
+  world.dayIndex = dayIndex;
+  world.timeLeft = day.duration;
   world.spawnIn = 1.0;
   world.tickets = [];
   world.plate = [];
   world.hand = null;
   world.grill = Array.from({ length: GRILL_SLOTS }, () => ({ state: 'empty', t: 0 }));
-  world.shiftServed = 0;
-  world.shiftExpired = 0;
-  world.expired = 0; // the HUD's walked-out count is per shift: a retry (or a
-  // new shift) must not start showing the previous shift's walk-outs
+  world.dayServed = 0;
+  world.dayExpired = 0;
+  world.expired = 0; // the HUD's walked-out count is per day: a retry (or a
+  // new day) must not start showing the previous day's walk-outs
+  // Regulars follow the truck: up to three of them show up today as
+  // starred customers (the first tickets of the day).
+  world.regularsToStar = Math.min(3, world.regulars);
   world.screen = 'playing';
-  world.message = { text: `${level.name} — serve them all!`, t: 2.2 };
+  world.message = { text: `Day ${dayIndex + 1} — ${day.name}!`, t: 2.2 };
   spawnTicket(world);
 }
 
@@ -82,18 +108,24 @@ export function startGame(world) {
   world.score = 0;
   world.money = 0;
   world.upgrades = { turbo: false, calm: false, tips: false };
+  world.signatures = { tower: false, melt: false, garden: false };
+  world.regulars = 0;
+  world.regularsToStar = 0;
   world.served = 0;
   world.expired = 0;
   world.combo = 0;
   world.bestCombo = 0;
   world.stars = 0;
-  startShift(world, 0);
+  startDay(world, 0);
 }
 
 function spawnTicket(world) {
-  const level = levelOf(world);
-  if (world.tickets.filter((t) => t.state === 'waiting').length >= level.maxTickets) return;
-  const dishId = pick(world.rand, level.dishes);
+  const day = dayOf(world);
+  if (world.tickets.filter((t) => t.state === 'waiting').length >= day.maxTickets) return;
+  // The first tickets of the day are the regulars who followed the truck.
+  const isRegular = world.regularsToStar > 0;
+  if (isRegular) world.regularsToStar -= 1;
+  const dishId = pickDish(world, isRegular);
   const patience = patienceSeconds(world);
   world.tickets.push({
     id: nextTicketId++,
@@ -101,6 +133,7 @@ function spawnTicket(world) {
     patience,
     patienceMax: patience,
     state: 'waiting',
+    regular: isRegular,
   });
 }
 
@@ -292,8 +325,11 @@ export function serveTicket(world, ticketId) {
     return 'wrong';
   }
   const dish = DISHES[ticket.dishId];
-  const tipMult = world.upgrades.tips ? BIG_TIP_MULT : 1;
-  const tip = Math.round((ticket.patience / ticket.patienceMax) * SERVE_BONUS_MAX * tipMult);
+  // The tip scales with patience left, the Big Tips upgrade, the day's
+  // generosity (the Night Market pays more), and doubles for a regular.
+  const tipMult = (world.upgrades.tips ? BIG_TIP_MULT : 1) * (dayOf(world).tipMult || 1);
+  let tip = Math.round((ticket.patience / ticket.patienceMax) * SERVE_BONUS_MAX * tipMult);
+  if (ticket.regular) tip *= 2;
   const comboBonus = Math.min(world.combo * COMBO_STEP, COMBO_CAP);
   const gained = dish.price + tip + comboBonus;
   world.score += gained;
@@ -301,7 +337,7 @@ export function serveTicket(world, ticketId) {
   world.combo += 1;
   world.bestCombo = Math.max(world.bestCombo, world.combo);
   world.served += 1;
-  world.shiftServed += 1;
+  world.dayServed += 1;
   world.lastServedDish = ticket.dishId;
   world.servedFlash = 1.2;
   ticket.state = 'served';
@@ -310,6 +346,12 @@ export function serveTicket(world, ticketId) {
   world.hand = null;
   popup(world, 1180, 430, `+${gained}`, '#3f7d33');
   burst(world, 1180, 470, '#f7c948', 14);
+  // Served with at least half their patience left, a new customer becomes
+  // a regular: they will follow the truck to later stops.
+  if (!ticket.regular && ticket.patience / ticket.patienceMax >= 0.5) {
+    world.regulars += 1;
+    popup(world, 1180, 396, '★ +1 Regular!', '#b97a28');
+  }
   return 'serve';
 }
 
@@ -325,16 +367,16 @@ export function serveBest(world) {
 
 // ---------------------------------------------------------------- time
 
-function endShift(world, failed) {
-  // A finished shift opens the shop when another shift is still to come
-  // (shifts 1 and 2); the last shift goes to the shift-end card as before.
+function endDay(world, failed) {
+  // A finished day opens the shop when another stop is still to come
+  // (days 1-6); the last day (the Food Festival) ends the tour.
   world.screen = failed ? 'failed'
-    : (world.levelIndex + 1 < LEVELS.length ? 'shop' : 'shiftEnd');
+    : (world.dayIndex + 1 < DAYS.length ? 'shop' : 'gameover');
   world.event = failed ? 'failed' : 'levelEnd';
   if (!failed) {
-    const stars = world.shiftExpired === 0 ? 3 : world.shiftExpired === 1 ? 2 : 1;
+    const stars = world.dayExpired === 0 ? 3 : world.dayExpired === 1 ? 2 : 1;
     world.stars += stars;
-    world.shiftStars = stars;
+    world.dayStars = stars;
   }
 }
 
@@ -358,6 +400,26 @@ export function buyUpgrade(world, id) {
   return 'place';
 }
 
+// Unlock one signature burger in the shop. Money pays, score never does.
+// Once unlocked, the signature joins the order pool for every later day.
+export function buySignature(world, id) {
+  if (world.screen !== 'shop') return null;
+  const dish = DISHES[id];
+  if (!dish || !dish.signature) return null;
+  if (world.signatures[id]) {
+    toast(world, `${dish.name} is already on the menu`);
+    return 'wrong';
+  }
+  if (world.money < dish.cost) {
+    toast(world, `Not enough money — ${dish.name} costs $${dish.cost} to unlock`);
+    return 'wrong';
+  }
+  world.money -= dish.cost;
+  world.signatures[id] = true;
+  toast(world, `${dish.name} unlocked! It joins the menu tomorrow.`);
+  return 'place';
+}
+
 export function update(world, dt) {
   // Particles and popups age whatever the screen.
   for (const p of world.particles) {
@@ -376,19 +438,19 @@ export function update(world, dt) {
   if (world.servedFlash > 0) world.servedFlash -= dt;
   if (world.screen !== 'playing') return;
 
-  const level = levelOf(world);
+  const day = dayOf(world);
   world.timeLeft -= dt;
   if (world.timeLeft <= 0) {
     world.timeLeft = 0;
-    endShift(world, false);
+    endDay(world, false);
     return;
   }
 
-  // New orders on the level's rhythm.
+  // New orders on the day's rhythm.
   world.spawnIn -= dt;
   if (world.spawnIn <= 0) {
     spawnTicket(world);
-    world.spawnIn = level.spawnEvery;
+    world.spawnIn = day.spawnEvery;
   }
 
   // Patience runs out: the customer walks out.
@@ -399,12 +461,12 @@ export function update(world, dt) {
       ticket.patience = 0;
       ticket.state = 'expired';
       world.expired += 1;
-      world.shiftExpired += 1;
+      world.dayExpired += 1;
       world.combo = 0;
       world.event = 'expire';
       toast(world, `A ${DISHES[ticket.dishId].name} walked out!`);
-      if (world.shiftExpired >= MAX_EXPIRED_PER_SHIFT) {
-        endShift(world, true);
+      if (world.dayExpired >= MAX_EXPIRED_PER_DAY) {
+        endDay(world, true);
         return;
       }
     }
@@ -436,19 +498,19 @@ export function update(world, dt) {
   }
 }
 
-// Advance to the next shift, or to the final results.
+// Advance to the next day, or retry a failed one.
 export function advance(world) {
   if (world.screen === 'shop') {
-    startShift(world, world.levelIndex + 1);
+    startDay(world, world.dayIndex + 1);
     return 'level';
   }
   if (world.screen === 'shiftEnd') {
-    if (world.levelIndex + 1 < LEVELS.length) startShift(world, world.levelIndex + 1);
+    if (world.dayIndex + 1 < DAYS.length) startDay(world, world.dayIndex + 1);
     else world.screen = 'gameover';
     return 'level';
   }
   if (world.screen === 'failed') {
-    startShift(world, world.levelIndex);
+    startDay(world, world.dayIndex);
     return 'level';
   }
   return null;
