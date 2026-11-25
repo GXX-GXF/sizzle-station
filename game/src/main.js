@@ -3,8 +3,8 @@
 // With ?shot=<name> in the URL it renders one frozen staged frame instead
 // of playing, for screenshots.
 
-import { VIEW, LAYOUT } from './config.js';
-import { createWorld, startGame, update, advance, pickFromStation, placeOnPlate, serveTicket, serveBest, cancelHeld, discardInBin } from './world.js';
+import { VIEW, LAYOUT, SHOP } from './config.js';
+import { createWorld, startGame, update, advance, pickFromStation, placeOnPlate, serveTicket, serveBest, cancelHeld, discardInBin, buyUpgrade } from './world.js';
 import { render } from './render.js';
 import { attachInput } from './input.js';
 import { sfx, unlockAudio, toggleMute, startSizzle, stopSizzle } from './audio.js';
@@ -27,7 +27,7 @@ window.__sizzle = {
   world,
   version: 1,
   update,
-  actions: { startGame, advance, pickFromStation, placeOnPlate, serveBest, serveTicket, cancelHeld, discardInBin },
+  actions: { startGame, advance, pickFromStation, placeOnPlate, serveBest, serveTicket, cancelHeld, discardInBin, buyUpgrade },
 };
 
 function playEvent(event) {
@@ -72,6 +72,15 @@ function onTap(x, y) {
   unlockAudio();
   if (shotName) return; // staged frames do not play
   if (world.screen === 'title') { startGame(world); sfx.level(); return; }
+  if (world.screen === 'shop') {
+    // The shop is the one overlay where a tap is not a blanket advance:
+    // a buy button buys, NEXT SHIFT advances, anywhere else does nothing.
+    for (const card of SHOP.cards) {
+      if (inRect(x, y, card.buy)) { playEvent(buyUpgrade(world, card.id)); return; }
+    }
+    if (inRect(x, y, SHOP.next)) { playEvent(advance(world)); return; }
+    return;
+  }
   if (world.screen === 'shiftEnd' || world.screen === 'failed') {
     playEvent(advance(world));
     return;
@@ -103,7 +112,7 @@ const input = attachInput(canvas, {
     if (shotName) return;
     unlockAudio();
     if (world.screen === 'title') { startGame(world); sfx.level(); }
-    else if (world.screen === 'shiftEnd' || world.screen === 'failed') playEvent(advance(world));
+    else if (world.screen === 'shop' || world.screen === 'shiftEnd' || world.screen === 'failed') playEvent(advance(world));
     else if (world.screen === 'gameover') { startGame(world); sfx.level(); }
   },
   onPause() {

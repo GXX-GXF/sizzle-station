@@ -98,6 +98,35 @@ export const COMBO_STEP = 5;            // extra points per streak step
 export const COMBO_CAP = 50;
 export const WRONG_SERVE_PENALTY = 25;
 
+// ---------------------------------------------------------------- shop
+// Between shifts the player spends the money they earned on one-off
+// upgrades. Score is the final metric and is never reduced by spending;
+// money is the spendable wallet. Each upgrade is bought once and applies
+// to every shift after it is bought. Prices are set so a decent shift
+// (~$300–500 earned) buys 1–2 upgrades per shop visit.
+
+export const TURBO_COOK_SECONDS = 3; // Turbo Grill: patties cook in 3s
+export const CALM_PATIENCE_MULT = 1.3; // Calm Customers: patience x1.3
+export const BIG_TIP_MULT = 1.5;       // Big Tips: tip bonus x1.5
+
+export const UPGRADES = {
+  turbo: { name: 'Turbo Grill',    desc: 'Patties cook in 3s, not 4s.',  price: 180 },
+  calm:  { name: 'Calm Customers', desc: 'Customers wait 30% longer.',  price: 180 },
+  tips:  { name: 'Big Tips',       desc: 'Tips are worth 50% more.',     price: 150 },
+};
+
+// Shop panel geometry (1280x720 view). The buy rects are explicit so the
+// drawing in render.js and the hit test in main.js can never drift apart.
+export const SHOP = {
+  panel: { x: 140, y: 110, w: 1000, h: 500 },
+  cards: [
+    { id: 'turbo', x: 170, y: 260, w: 300, h: 230, buy: { x: 250, y: 420, w: 140, h: 40 } },
+    { id: 'calm',  x: 490, y: 260, w: 300, h: 230, buy: { x: 570, y: 420, w: 140, h: 40 } },
+    { id: 'tips',  x: 810, y: 260, w: 300, h: 230, buy: { x: 890, y: 420, w: 140, h: 40 } },
+  ],
+  next: { x: 520, y: 540, w: 240, h: 44 },
+};
+
 // ---------------------------------------------------------------- layout
 // All positions are in the 1280x720 view. The kitchen is one screen:
 // order board on top, stations along the counter, assembly in the middle,

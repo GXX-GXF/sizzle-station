@@ -18,8 +18,8 @@
 // how long they have waited). Layout, hit areas, timings and mechanics are
 // untouched.
 
-import { DISHES, INGREDIENTS, LEVELS, LAYOUT, PALETTE, PATTY_COOK_SECONDS } from './config.js';
-import { matchingTicket } from './world.js';
+import { DISHES, INGREDIENTS, LEVELS, LAYOUT, PALETTE, UPGRADES, SHOP } from './config.js';
+import { matchingTicket, pattyCookSeconds } from './world.js';
 
 function rr(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -652,7 +652,7 @@ function drawStation(ctx, world, station, hover) {
         ctx.lineWidth = 2;
         ctx.stroke();
         if (slot.state === 'cooking') {
-          const frac = slot.t / PATTY_COOK_SECONDS;
+          const frac = slot.t / pattyCookSeconds(world);
           ctx.strokeStyle = PALETTE.mustard;
           ctx.lineWidth = 6;
           ctx.lineCap = 'round';
@@ -1498,6 +1498,7 @@ function drawHeader(ctx, world) {
   const urgent = world.timeLeft <= 10 && world.screen === 'playing';
   pill(ctx, 585, 10, 110, 42, urgent ? PALETTE.red : PALETTE.cream, PALETTE.ink, 3);
   display(ctx, fmtTime(world.timeLeft), 640, 32, 28, urgent ? '#fff' : PALETTE.ink, 'center', urgent ? PALETTE.redDark : '#d8c9a8');
+  text(ctx, `MONEY $${world.money}`, 830, 32, 18, PALETTE.mustard, 'right', '900');
   text(ctx, `SCORE ${world.score}`, 980, 32, 22, PALETTE.gold, 'right', '900');
   text(ctx, `Served ${world.served} · Walked out ${world.expired}`, 980, 52, 12, '#cbb98f', 'right', '700');
   // Mute button (rect is the click target in main.js — keep it).
@@ -1533,6 +1534,135 @@ function ctaButton(ctx, label, y, fill = PALETTE.mustard, colour = PALETTE.ink) 
   text(ctx, label, 640, y + 2, 20, colour, 'center', '900');
 }
 
+// One small icon per upgrade, drawn from the same shapes as the kitchen:
+// a grill with a patty (Turbo Grill), a wall clock (Calm Customers),
+// a gold coin (Big Tips).
+function drawUpgradeIcon(ctx, id, x, y) {
+  if (id === 'turbo') {
+    // A flame: hot and fast. Orange outer teardrop, yellow inner teardrop.
+    ctx.fillStyle = '#e8590c';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 24);
+    ctx.quadraticCurveTo(x + 16, y - 6, x + 12, y + 8);
+    ctx.quadraticCurveTo(x + 8, y + 18, x, y + 18);
+    ctx.quadraticCurveTo(x - 8, y + 18, x - 12, y + 8);
+    ctx.quadraticCurveTo(x - 16, y - 6, x, y - 24);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f7c948';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 12);
+    ctx.quadraticCurveTo(x + 9, y - 2, x + 7, y + 8);
+    ctx.quadraticCurveTo(x + 4, y + 14, x, y + 14);
+    ctx.quadraticCurveTo(x - 4, y + 14, x - 7, y + 8);
+    ctx.quadraticCurveTo(x - 9, y - 2, x, y - 12);
+    ctx.closePath();
+    ctx.fill();
+  } else if (id === 'calm') {
+    // A round clock, hands at a relaxed ten past ten.
+    ctx.fillStyle = PALETTE.cream;
+    ctx.beginPath();
+    ctx.arc(x, y, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - 8, y - 8);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 8, y - 10);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+  } else {
+    // A gold coin with a dollar sign.
+    ctx.fillStyle = PALETTE.gold;
+    ctx.beginPath();
+    ctx.arc(x, y, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.strokeStyle = '#b97a28';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.stroke();
+    text(ctx, '$', x, y + 1, 22, PALETTE.ink, 'center', '900');
+  }
+}
+
+// The between-shifts shop: three one-off upgrades on cards, the wallet
+// up top, and a NEXT SHIFT button. Geometry comes from SHOP in config.js
+// (the same rects main.js hit-tests), so the drawing and the clicks can
+// never drift apart.
+function drawShop(ctx, world) {
+  ctx.fillStyle = 'rgba(30,20,10,0.6)';
+  ctx.fillRect(0, 0, 1280, 720);
+  const p = SHOP.panel;
+  cardShadow(ctx, p.x, p.y, p.w, p.h, 20, 8);
+  ctx.fillStyle = PALETTE.cream;
+  rr(ctx, p.x, p.y, p.w, p.h, 20);
+  ctx.fill();
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  const level = LEVELS[world.levelIndex];
+  const stars = '★'.repeat(world.shiftStars || 0) + '☆'.repeat(3 - (world.shiftStars || 0));
+  display(ctx, 'SHOP', 640, 152, 36, PALETTE.red);
+  text(ctx, `${level.name} — done!  ${stars}   Served ${world.shiftServed} · Walked out ${world.shiftExpired}`, 640, 192, 17, PALETTE.inkSoft, 'center', '700');
+  // The wallet, big and gold: this is the number the shop spends.
+  pill(ctx, 640 - 110, 212, 220, 40, PALETTE.board, PALETTE.ink, 3);
+  text(ctx, `MONEY $${world.money}`, 640, 232, 24, PALETTE.gold, 'center', '900');
+  for (const card of SHOP.cards) {
+    const up = UPGRADES[card.id];
+    const owned = world.upgrades[card.id];
+    const afford = world.money >= up.price;
+    cardShadow(ctx, card.x, card.y, card.w, card.h, 14, 4);
+    ctx.fillStyle = owned ? '#eef6e6' : PALETTE.paper;
+    rr(ctx, card.x, card.y, card.w, card.h, 14);
+    ctx.fill();
+    ctx.strokeStyle = owned ? PALETTE.greenDark : PALETTE.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    const cx = card.x + card.w / 2;
+    text(ctx, up.name, cx, card.y + 32, 20, PALETTE.ink, 'center', '900');
+    text(ctx, up.desc, cx, card.y + 64, 14, PALETTE.inkSoft, 'center', '700');
+    drawUpgradeIcon(ctx, card.id, cx, card.y + 112);
+    // The buy button carries the price, so the card needs no price line.
+    const b = card.buy;
+    if (owned) {
+      pill(ctx, b.x, b.y, b.w, b.h, PALETTE.green, PALETTE.ink, 3);
+      text(ctx, 'OWNED', cx, b.y + b.h / 2 + 1, 17, '#fff', 'center', '900');
+    } else if (afford) {
+      pill(ctx, b.x, b.y, b.w, b.h, PALETTE.mustard, PALETTE.ink, 3);
+      text(ctx, `BUY $${up.price}`, cx, b.y + b.h / 2 + 1, 17, PALETTE.ink, 'center', '900');
+    } else {
+      pill(ctx, b.x, b.y, b.w, b.h, '#cbb98f', PALETTE.ink, 3);
+      text(ctx, `BUY $${up.price}`, cx, b.y + b.h / 2 + 1, 17, '#8a7a5e', 'center', '900');
+    }
+  }
+  // Next shift.
+  const n = SHOP.next;
+  cardShadow(ctx, n.x, n.y, n.w, n.h, 22, 4);
+  pill(ctx, n.x, n.y, n.w, n.h, PALETTE.green, PALETTE.ink, 3);
+  text(ctx, 'NEXT SHIFT', 640, n.y + n.h / 2 + 1, 20, '#fff', 'center', '900');
+  // A toast (bought / not enough money) floats in the gap between the
+  // panel bottom and the footer, where it covers nothing.
+  if (world.message) {
+    const w = ctx.measureText(world.message.text).width + 36;
+    ctx.fillStyle = 'rgba(43,26,18,0.92)';
+    rr(ctx, 640 - w / 2, 612, w, 28, 14);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.mustard;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    text(ctx, world.message.text, 640, 626, 15, '#fff8e7', 'center', '700');
+  }
+}
+
 export function render(ctx, world, ui) {
   ctx.clearRect(0, 0, 1280, 720);
   ctx.fillStyle = PALETTE.wallBottom;
@@ -1544,7 +1674,7 @@ export function render(ctx, world, ui) {
     const y = overlay(ctx, 'SIZZLE STATION', [
       'A one-screen burger joint. Orders come in, you build them,',
       'you ring the bell. Patties burn if you forget the grill.',
-      '',
+      'Earn money, spend it on upgrades between shifts.',
       'Build bottom to top: start with the bottom bun.',
       'Click a station (1–6) to pick up. Click the plate to stack.',
       'Space serves. Right-click / Esc cancels. The bin takes trash.',
@@ -1639,6 +1769,8 @@ export function render(ctx, world, ui) {
       'Thanks for playing Sizzle Station.',
     ], PALETTE.red);
     ctaButton(ctx, 'Press R to play again', y + 30);
+  } else if (world.screen === 'shop') {
+    drawShop(ctx, world);
   } else if (world.paused) {
     overlay(ctx, 'Paused', ['Press P or click to get back to the grill.'], PALETTE.ink);
   }

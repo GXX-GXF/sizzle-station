@@ -6,9 +6,21 @@
 import {
   DISHES, LEVELS, INGREDIENTS, PATTY_COOK_SECONDS, PATTY_BURN_SECONDS,
   GRILL_SLOTS, MAX_EXPIRED_PER_SHIFT, SERVE_BONUS_MAX, COMBO_STEP,
-  COMBO_CAP, WRONG_SERVE_PENALTY,
+  COMBO_CAP, WRONG_SERVE_PENALTY, TURBO_COOK_SECONDS, CALM_PATIENCE_MULT,
+  BIG_TIP_MULT, UPGRADES,
 } from './config.js';
 import { mulberry32, pick } from './random.js';
+
+// The grill's cook time and the customers' patience depend on the upgrades
+// the player owns. The burn window (PATTY_BURN_SECONDS) never changes.
+export function pattyCookSeconds(world) {
+  return world.upgrades.turbo ? TURBO_COOK_SECONDS : PATTY_COOK_SECONDS;
+}
+
+function patienceSeconds(world) {
+  const base = levelOf(world).patience;
+  return Math.round(base * (world.upgrades.calm ? CALM_PATIENCE_MULT : 1));
+}
 
 let nextTicketId = 1;
 
@@ -16,11 +28,14 @@ export function createWorld(seed = 1) {
   return {
     seed,
     rand: mulberry32(seed),
-    screen: 'title', // title | playing | shiftEnd | gameover | failed
+    screen: 'title', // title | playing | shiftEnd | shop | gameover | failed
     levelIndex: 0,
     timeLeft: LEVELS[0].duration,
     spawnIn: 1.2,
     score: 0,
+    money: 0, // spendable wallet: grows with every serve, spent in the shop.
+    // Score is the final metric and is never reduced by spending.
+    upgrades: { turbo: false, calm: false, tips: false },
     served: 0,
     expired: 0,
     combo: 0,
@@ -65,6 +80,8 @@ export function startShift(world, levelIndex) {
 
 export function startGame(world) {
   world.score = 0;
+  world.money = 0;
+  world.upgrades = { turbo: false, calm: false, tips: false };
   world.served = 0;
   world.expired = 0;
   world.combo = 0;
@@ -77,11 +94,12 @@ function spawnTicket(world) {
   const level = levelOf(world);
   if (world.tickets.filter((t) => t.state === 'waiting').length >= level.maxTickets) return;
   const dishId = pick(world.rand, level.dishes);
+  const patience = patienceSeconds(world);
   world.tickets.push({
     id: nextTicketId++,
     dishId,
-    patience: level.patience,
-    patienceMax: level.patience,
+    patience,
+    patienceMax: patience,
     state: 'waiting',
   });
 }
@@ -274,10 +292,12 @@ export function serveTicket(world, ticketId) {
     return 'wrong';
   }
   const dish = DISHES[ticket.dishId];
-  const tip = Math.round((ticket.patience / ticket.patienceMax) * SERVE_BONUS_MAX);
+  const tipMult = world.upgrades.tips ? BIG_TIP_MULT : 1;
+  const tip = Math.round((ticket.patience / ticket.patienceMax) * SERVE_BONUS_MAX * tipMult);
   const comboBonus = Math.min(world.combo * COMBO_STEP, COMBO_CAP);
   const gained = dish.price + tip + comboBonus;
   world.score += gained;
+  world.money += gained; // the wallet grows with the score, one for one
   world.combo += 1;
   world.bestCombo = Math.max(world.bestCombo, world.combo);
   world.served += 1;
@@ -306,13 +326,36 @@ export function serveBest(world) {
 // ---------------------------------------------------------------- time
 
 function endShift(world, failed) {
-  world.screen = failed ? 'failed' : 'shiftEnd';
+  // A finished shift opens the shop when another shift is still to come
+  // (shifts 1 and 2); the last shift goes to the shift-end card as before.
+  world.screen = failed ? 'failed'
+    : (world.levelIndex + 1 < LEVELS.length ? 'shop' : 'shiftEnd');
   world.event = failed ? 'failed' : 'levelEnd';
   if (!failed) {
     const stars = world.shiftExpired === 0 ? 3 : world.shiftExpired === 1 ? 2 : 1;
     world.stars += stars;
     world.shiftStars = stars;
   }
+}
+
+// Buy one upgrade in the shop. Money pays, score never does. One purchase
+// per upgrade; a second tap, or a tap without the money, is refused.
+export function buyUpgrade(world, id) {
+  if (world.screen !== 'shop') return null;
+  const up = UPGRADES[id];
+  if (!up) return null;
+  if (world.upgrades[id]) {
+    toast(world, `${up.name} is already yours`);
+    return 'wrong';
+  }
+  if (world.money < up.price) {
+    toast(world, `Not enough money — ${up.name} costs $${up.price}`);
+    return 'wrong';
+  }
+  world.money -= up.price;
+  world.upgrades[id] = true;
+  toast(world, `${up.name} bought!`);
+  return 'place';
 }
 
 export function update(world, dt) {
@@ -375,13 +418,15 @@ export function update(world, dt) {
   );
 
   // The grill cooks, then burns. Leftover time carries across the
-  // transition, so one long step still burns a forgotten patty.
+  // transition, so one long step still burns a forgotten patty. The cook
+  // time is the upgrade-aware one; the burn window never changes.
+  const cookSeconds = pattyCookSeconds(world);
   for (const slot of world.grill) {
     if (slot.state === 'cooking') {
       slot.t += dt;
-      if (slot.t >= PATTY_COOK_SECONDS) {
+      if (slot.t >= cookSeconds) {
         slot.state = 'done';
-        slot.t -= PATTY_COOK_SECONDS;
+        slot.t -= cookSeconds;
         if (slot.t >= PATTY_BURN_SECONDS) { slot.state = 'burnt'; slot.t = 0; }
       }
     } else if (slot.state === 'done') {
@@ -393,6 +438,10 @@ export function update(world, dt) {
 
 // Advance to the next shift, or to the final results.
 export function advance(world) {
+  if (world.screen === 'shop') {
+    startShift(world, world.levelIndex + 1);
+    return 'level';
+  }
   if (world.screen === 'shiftEnd') {
     if (world.levelIndex + 1 < LEVELS.length) startShift(world, world.levelIndex + 1);
     else world.screen = 'gameover';
