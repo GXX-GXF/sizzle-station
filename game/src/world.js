@@ -56,6 +56,8 @@ export function startShift(world, levelIndex) {
   world.grill = Array.from({ length: GRILL_SLOTS }, () => ({ state: 'empty', t: 0 }));
   world.shiftServed = 0;
   world.shiftExpired = 0;
+  world.expired = 0; // the HUD's walked-out count is per shift: a retry (or a
+  // new shift) must not start showing the previous shift's walk-outs
   world.screen = 'playing';
   world.message = { text: `${level.name} — serve them all!`, t: 2.2 };
   spawnTicket(world);
