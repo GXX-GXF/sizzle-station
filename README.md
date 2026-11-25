@@ -1,13 +1,19 @@
 # Sizzle Station
 
-A one-screen burger joint, built for make.fun's "Make the best cooking game" bounty ($250 in USDC).
+A one-screen burger food truck on a 7-day tour, built for make.fun's
+"Make the best cooking game" bounty ($250 in USDC).
 
 Orders come in on the board. You pick ingredients from the stations, cook
-patties on the grill (take them off in time or they burn), stack the burger
-on the assembly plate, and ring the bell to serve. Three shifts — Lunch
-Rush, Dinner Rush, Closing Rush — with a growing menu and faster orders.
-Serve with patience to spare for a tip; let three customers walk out and
-the shift fails.
+patties on the grill (take them off in time or they burn), park a cooked
+patty on the holding tray to free your hands (it spoils after 10 seconds),
+stack the burger on the assembly plate in order, and ring the bell to serve.
+Each day the truck parks somewhere new — Riverside Park, Campus Quad,
+Downtown Lunch, Night Market, Beach Boardwalk, Stadium Game Day, and the
+Food Festival finale — with its own crowd, patience and tips. Money you earn
+is spent between days on upgrades and on unlocking signature burgers; serve
+a customer with patience to spare and they become a regular who follows the
+truck and tips double. Let three customers walk out in a day and the day
+fails.
 
 ## Play it
 
@@ -24,16 +30,27 @@ Or open `game/index.html` through any static host.
 ## Controls
 
 - **Mouse:** click a station to pick up an ingredient, click the plate to
-  stack it, click a ticket (or the serve window) to serve a matching dish.
-- **Keyboard:** `1–5` pick from a station, `Space` serves the best matching
-  dish, `Enter` starts / continues, `P` pauses, `M` mutes, `R` restarts.
+  stack it, click the tray to park or retrieve a cooked patty, click a
+  ticket (or the serve window) to serve a matching dish. Right-click puts
+  down what you are holding.
+- **Keyboard:** `1–7` pick from a station (the tray is `7`), `Space` serves
+  the best matching dish, `Enter` starts / continues, `Esc` cancels what
+  you are holding, `P` pauses, `M` mutes, `R` restarts.
 
 ## Menu
+
+Base dishes, on the menu from day 1:
 
 - **Classic Burger** — bun, patty, lettuce, tomato — $100
 - **Cheese Burger** — bun, patty, cheese, tomato — $120
 - **Double Stack** — bun, patty, patty, cheese, lettuce — $160
 - **Garden Burger** — bun, lettuce, tomato, cheese — $110
+
+Signature burgers, unlocked with earnings in the between-days shop:
+
+- **The Tower** — bun, patty, patty, patty, cheese, lettuce, tomato — $200
+- **Double Melt** — bun, patty, cheese, cheese, lettuce, tomato — $240
+- **Garden Deluxe** — bun, lettuce, lettuce, tomato, tomato, cheese — $180
 
 ## Layout
 
