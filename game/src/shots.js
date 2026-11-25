@@ -21,7 +21,8 @@ export function stageShot(name, seed = 1) {
   }
   if (name === 'cover') {
     // Dinner Rush, mid-play: three tickets, one nearly out of patience;
-    // a Double Stack half built on the plate; one patty done and one
+    // a Cheese Burger half built on the plate (bun, patty, cheese is a
+    // valid prefix of the cheese recipe); one patty done and one
     // cooking on the grill; a Classic just served on the pass; 0:47 left.
     startShift(world, 1);
     world.timeLeft = 47;

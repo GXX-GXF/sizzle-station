@@ -5,7 +5,7 @@
 
 import { VIEW, INGREDIENTS } from './config.js';
 
-const STATION_KEYS = { 1: 'bun', 2: 'grill', 3: 'lettuce', 4: 'tomato', 5: 'cheese' };
+const STATION_KEYS = { 1: 'bun', 2: 'grill', 3: 'lettuce', 4: 'tomato', 5: 'cheese', 6: 'bin' };
 
 export function attachInput(canvas, actions) {
   let mouse = { x: VIEW.width / 2, y: VIEW.height / 2, inside: false };
@@ -27,8 +27,14 @@ export function attachInput(canvas, actions) {
     mouse.inside = false;
   });
   canvas.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return; // right-click is cancel, not a tap
     const p = toView(event);
     actions.onTap(p.x, p.y);
+  });
+  // Right-click cancels whatever is held, and never opens the menu.
+  canvas.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    actions.onCancel();
   });
 
   window.addEventListener('keydown', (event) => {
@@ -40,7 +46,8 @@ export function attachInput(canvas, actions) {
       return;
     }
     if (key === 'enter') { actions.onConfirm(); return; }
-    if (key === 'p' || key === 'escape') { actions.onPause(); return; }
+    if (key === 'p') { actions.onPause(); return; }
+    if (key === 'escape') { actions.onEscape(); return; }
     if (key === 'm') { actions.onMute(); return; }
     if (key === 'r') { actions.onRestart(); return; }
     if (STATION_KEYS[key]) {

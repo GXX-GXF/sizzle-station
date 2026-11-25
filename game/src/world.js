@@ -86,39 +86,56 @@ function spawnTicket(world) {
   });
 }
 
-// Count how many of each ingredient a list holds.
-function counts(list) {
-  const out = {};
-  for (const item of list) out[item] = (out[item] || 0) + 1;
-  return out;
-}
-
-// Does the plate hold exactly the dish's recipe, item for item?
-export function plateMatchesDish(plate, dishId) {
-  const want = counts(DISHES[dishId].ingredients);
-  const have = counts(plate);
-  const keys = new Set([...Object.keys(want), ...Object.keys(have)]);
-  for (const k of keys) if ((want[k] || 0) !== (have[k] || 0)) return false;
+// Is the plate a prefix of this recipe, bottom to top?
+function isPrefix(plate, recipe) {
+  if (plate.length > recipe.length) return false;
+  for (let i = 0; i < plate.length; i++) if (plate[i] !== recipe[i]) return false;
   return true;
 }
 
-// The waiting ticket whose recipe the plate matches, lowest patience first.
+// Does the plate hold exactly the dish's recipe, in order, bottom to top?
+export function plateMatchesDish(plate, dishId) {
+  const want = DISHES[dishId].ingredients;
+  if (plate.length !== want.length) return false;
+  for (let i = 0; i < want.length; i++) if (plate[i] !== want[i]) return false;
+  return true;
+}
+
+// What can go on the plate next, given what is already on it? The plate
+// plus the ingredient must stay a prefix of some waiting ticket's recipe.
+function nextIngredients(world) {
+  const out = [];
+  for (const ticket of world.tickets) {
+    if (ticket.state !== 'waiting') continue;
+    const recipe = DISHES[ticket.dishId].ingredients;
+    if (isPrefix(world.plate, recipe) && world.plate.length < recipe.length) {
+      const next = recipe[world.plate.length];
+      if (!out.includes(next)) out.push(next);
+    }
+  }
+  return out;
+}
+
+function isNextIngredient(world, ingredient) {
+  return nextIngredients(world).includes(ingredient);
+}
+
+// A short hint naming what the plate needs next, for a rejected pick/place.
+function nextHint(world) {
+  const next = nextIngredients(world);
+  if (next.length === 0) return 'No open order matches this plate';
+  const names = next.map((id) => INGREDIENTS[id].name);
+  if (names.length === 1) return `Next: ${names[0]}`;
+  return `Next: ${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+}
+
+// The waiting ticket whose recipe the plate matches exactly, in order,
+// lowest patience first.
 export function matchingTicket(world) {
   const waiting = world.tickets
     .filter((t) => t.state === 'waiting' && plateMatchesDish(world.plate, t.dishId))
     .sort((a, b) => a.patience - b.patience);
   return waiting[0] || null;
-}
-
-// Is this ingredient still wanted by any waiting ticket, given the plate?
-function stillWanted(world, ingredient) {
-  for (const ticket of world.tickets) {
-    if (ticket.state !== 'waiting') continue;
-    const want = counts(DISHES[ticket.dishId].ingredients);
-    const have = counts(world.plate);
-    if ((have[ingredient] || 0) < (want[ingredient] || 0)) return true;
-  }
-  return false;
 }
 
 function toast(world, text) {
@@ -150,10 +167,13 @@ function burst(world, x, y, colour, n = 10) {
 
 export function pickFromStation(world, stationId) {
   if (world.screen !== 'playing') return null;
+  // The bin is not a pick-up: it takes what is held (or a burnt patty off
+  // the grill), so it must work with a full hand too.
+  if (stationId === 'bin') return discardInBin(world);
   if (world.hand) { toast(world, 'Hands full — place it on the plate first'); return 'wrong'; }
   if (stationId === 'grill') return takeFromGrill(world);
-  if (!stillWanted(world, stationId)) {
-    toast(world, `${INGREDIENTS[stationId].name} is not on any open order`);
+  if (!isNextIngredient(world, stationId)) {
+    toast(world, `${INGREDIENTS[stationId].name} doesn't go on yet. ${nextHint(world)}`);
     return 'wrong';
   }
   world.hand = stationId;
@@ -170,10 +190,13 @@ export function takeFromGrill(world) {
   }
   const burnt = world.grill.find((s) => s.state === 'burnt');
   if (burnt) {
+    // A burnt patty comes off the grill into the hand, so the player can
+    // bin it (or cancel it). It can never go on a plate.
     burnt.state = 'empty';
     burnt.t = 0;
-    toast(world, 'Burnt patty binned — watch the grill!');
-    return 'place';
+    world.hand = 'burnt';
+    toast(world, 'That patty is burnt — bin it!');
+    return 'pick';
   }
   const empty = world.grill.find((s) => s.state === 'empty');
   if (empty) {
@@ -194,14 +217,50 @@ export function placeOnPlate(world) {
     return null;
   }
   const item = world.hand;
-  if (!stillWanted(world, item)) {
-    toast(world, `No open order wants ${INGREDIENTS[item].name} right now`);
+  if (item === 'burnt') {
+    toast(world, 'That patty is burnt — bin it!');
+    return 'wrong';
+  }
+  // Only the next ingredient in the recipe can go on, in order.
+  if (!isNextIngredient(world, item)) {
+    toast(world, `${INGREDIENTS[item].name} doesn't go on yet. ${nextHint(world)}`);
     return 'wrong';
   }
   world.plate.push(item);
   world.hand = null;
   burst(world, 1005, 470, INGREDIENTS[item].colour, 6);
   return 'place';
+}
+
+// Drop whatever is held (right-click / Escape). A station ingredient is
+// just put down; a patty is lost, so a cooked patty should go to the bin.
+export function cancelHeld(world) {
+  if (!world.hand) return null;
+  const item = world.hand;
+  world.hand = null;
+  toast(world, item === 'burnt' ? 'Burnt patty binned' : `${INGREDIENTS[item].name} put down`);
+  return 'place';
+}
+
+// The bin: throw away what is held, or, with an empty hand, a burnt patty
+// sitting on the grill, freeing its slot.
+export function discardInBin(world) {
+  if (world.screen !== 'playing') return null;
+  if (world.hand) {
+    const name = INGREDIENTS[world.hand].name;
+    world.hand = null;
+    toast(world, `${name} binned`);
+    return 'place';
+  }
+  const burnt = world.grill.find((s) => s.state === 'burnt');
+  if (burnt) {
+    burnt.state = 'empty';
+    burnt.t = 0;
+    toast(world, 'Burnt patty binned — the grill is free');
+    return 'place';
+  }
+  toast(world, 'Nothing to bin');
+  return 'wrong';
 }
 
 export function serveTicket(world, ticketId) {

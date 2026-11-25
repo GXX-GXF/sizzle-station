@@ -4,7 +4,7 @@
 // of playing, for screenshots.
 
 import { VIEW, LAYOUT } from './config.js';
-import { createWorld, startGame, update, advance, pickFromStation, placeOnPlate, serveTicket, serveBest } from './world.js';
+import { createWorld, startGame, update, advance, pickFromStation, placeOnPlate, serveTicket, serveBest, cancelHeld, discardInBin } from './world.js';
 import { render } from './render.js';
 import { attachInput } from './input.js';
 import { sfx, unlockAudio, toggleMute, startSizzle, stopSizzle } from './audio.js';
@@ -27,7 +27,7 @@ window.__sizzle = {
   world,
   version: 1,
   update,
-  actions: { startGame, advance, pickFromStation, placeOnPlate, serveBest, serveTicket },
+  actions: { startGame, advance, pickFromStation, placeOnPlate, serveBest, serveTicket, cancelHeld, discardInBin },
 };
 
 function playEvent(event) {
@@ -107,6 +107,14 @@ const input = attachInput(canvas, {
     else if (world.screen === 'gameover') { startGame(world); sfx.level(); }
   },
   onPause() {
+    if (world.screen === 'playing') world.paused = !world.paused;
+  },
+  onCancel() {
+    playEvent(cancelHeld(world));
+  },
+  onEscape() {
+    // Escape backs out: first drop what is held, and only then pause.
+    if (world.hand) { playEvent(cancelHeld(world)); return; }
     if (world.screen === 'playing') world.paused = !world.paused;
   },
   onMute() { toggleMute(); },

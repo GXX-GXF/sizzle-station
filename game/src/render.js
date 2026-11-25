@@ -103,6 +103,21 @@ export function drawIngredient(ctx, id, x, y, r) {
       ctx.lineTo(gx * r, -r * 0.02);
       ctx.stroke();
     }
+  } else if (id === 'burnt') {
+    // A patty left on the grill too long: blackened, no grill marks.
+    ctx.fillStyle = ing.dark;
+    rr(ctx, -r, -r * 0.45, r * 2, r * 0.9, r * 0.4);
+    ctx.fill();
+    ctx.fillStyle = ing.colour;
+    rr(ctx, -r * 0.9, -r * 0.55, r * 1.8, r * 0.75, r * 0.35);
+    ctx.fill();
+    // Ash specks.
+    ctx.fillStyle = 'rgba(180,180,180,0.6)';
+    for (const [ax, ay] of [[-0.4, -0.2], [0.15, 0.1], [0.45, -0.3]]) {
+      ctx.beginPath();
+      ctx.arc(ax * r, ay * r, r * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else if (id === 'lettuce') {
     ctx.fillStyle = ing.dark;
     ctx.beginPath();
@@ -339,7 +354,9 @@ function drawStation(ctx, world, station, hover) {
   const { x, y, w, h } = station;
   // The grill station's id is 'grill', but its ingredient is the patty:
   // INGREDIENTS has no 'grill' key, so resolve the label through 'patty'.
-  const label = INGREDIENTS[station.id === 'grill' ? 'patty' : station.id];
+  // The bin is not an ingredient either; it has its own label and key.
+  const label = station.id === 'bin' ? { station: 'Bin', key: '6' }
+    : INGREDIENTS[station.id === 'grill' ? 'patty' : station.id];
   ctx.save();
   if (hover) {
     ctx.fillStyle = 'rgba(255,182,39,0.35)';
@@ -454,6 +471,42 @@ function drawStation(ctx, world, station, hover) {
         }
       }
     });
+  } else if (station.id === 'bin') {
+    // Steel trash can with a red lid: click it to throw away what is held,
+    // or a burnt patty off the grill.
+    const cx = x + w / 2;
+    cardShadow(ctx, cx - 34, y + 44, 68, 76, 8, 3);
+    // Lid with a handle.
+    ctx.fillStyle = PALETTE.red;
+    rr(ctx, cx - 36, y + 42, 72, 14, 7);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, y + 42, 10, Math.PI, 0);
+    ctx.stroke();
+    // Tapered body.
+    ctx.fillStyle = PALETTE.steel;
+    ctx.beginPath();
+    ctx.moveTo(cx - 32, y + 58);
+    ctx.lineTo(cx + 32, y + 58);
+    ctx.lineTo(cx + 24, y + 118);
+    ctx.lineTo(cx - 24, y + 118);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // Vertical ribs.
+    ctx.strokeStyle = PALETTE.steelLight;
+    ctx.lineWidth = 2;
+    for (const rx of [-14, 0, 14]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + rx, y + 64);
+      ctx.lineTo(cx + rx * 0.75, y + 112);
+      ctx.stroke();
+    }
   } else {
     // Crates: a pile of the ingredient on a wooden crate.
     cardShadow(ctx, x + 18, y + 52, w - 36, 52, 8, 3);
@@ -613,7 +666,7 @@ function drawMenuStrip(ctx, world) {
     text(ctx, `$${dish.price}`, ix + 6, y + 12, 14, PALETTE.mustard, 'left', '800');
     x = ix + 56;
   }
-  text(ctx, 'Click a station (or 1–5) to pick up · Click the plate to add · Space to serve · P to pause · M to mute', 640, y + 44, 13, '#cbb98f', 'center', '700');
+  text(ctx, 'Click a station (or 1–6) to pick up · Click the plate to add · Space to serve · Right-click / Esc cancels · P to pause · M to mute', 640, y + 44, 13, '#cbb98f', 'center', '700');
   if (world.combo >= 2) {
     pill(ctx, 1080, y + 2, 176, 26, '#e8590c', PALETTE.ink, 3);
     text(ctx, `COMBO ×${world.combo}`, 1168, y + 15, 15, '#fff', 'center', '900');
@@ -872,8 +925,9 @@ export function render(ctx, world, ui) {
       'A one-screen burger joint. Orders come in, you build them,',
       'you ring the bell. Patties burn if you forget the grill.',
       '',
-      'Click a station (or press 1–5) to pick up an ingredient.',
-      'Click the plate to stack it. Space serves a matching dish.',
+      'Build bottom to top: start with the bottom bun.',
+      'Click a station (1–6) to pick up. Click the plate to stack.',
+      'Space serves. Right-click / Esc cancels. The bin takes trash.',
     ], PALETTE.red);
     // Ingredient strip under the title.
     const ids = ['bun', 'patty', 'lettuce', 'tomato', 'cheese'];
