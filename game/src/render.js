@@ -47,6 +47,16 @@ function display(ctx, str, x, y, size, colour, align = 'center', shadow = PALETT
   text(ctx, str, x, y, size, colour, align, '900');
 }
 
+// Draw text inside a fixed slot: measure at the base size and shrink the
+// font if the string is wider than the slot, so neighbouring HUD blocks
+// keep their gap in any font the browser falls back to.
+function fitText(ctx, str, x, y, maxW, size, colour, align = 'left', weight = '700', minSize = 10) {
+  ctx.font = `${weight} ${size}px system-ui, "Segoe UI", sans-serif`;
+  const w = ctx.measureText(str).width;
+  const fitted = w > maxW ? Math.max(minSize, size * (maxW / w)) : size;
+  text(ctx, str, x, y, fitted, colour, align, weight);
+}
+
 // A solid offset shadow for a card — cartoon depth, no blur cost.
 function cardShadow(ctx, x, y, w, h, r, dy = 5) {
   ctx.fillStyle = 'rgba(43,26,18,0.28)';
@@ -1604,15 +1614,20 @@ function drawHeader(ctx, world) {
   pill(ctx, 16, 12, 252, 38, PALETTE.red, PALETTE.ink, 3);
   display(ctx, 'SIZZLE STATION', 142, 32, 21, '#fff6e3', 'center', PALETTE.redDark);
   const day = DAYS[world.dayIndex];
-  text(ctx, `Day ${world.dayIndex + 1}/7 · ${day.name}`, 330, 32, 16, '#fff8e7', 'left', '700');
+  // Fixed HUD slots with clear gaps between them (logo ends at 268):
+  // day 284–502, timer pill 518–622, money 640–788, score 806–970,
+  // regulars 988–1064, mute button from 1196. Every label is fitted to
+  // its slot, so the timer can never touch MONEY and no block can grow
+  // into its neighbour whatever the values or font metrics.
+  fitText(ctx, `Day ${world.dayIndex + 1}/7 · ${day.name}`, 284, 31, 218, 16, '#fff8e7', 'left', '700', 12);
   // Timer in a cream pill; red when the clock is nearly out.
   const urgent = world.timeLeft <= 10 && world.screen === 'playing';
-  pill(ctx, 585, 10, 110, 42, urgent ? PALETTE.red : PALETTE.cream, PALETTE.ink, 3);
-  display(ctx, fmtTime(world.timeLeft), 640, 32, 28, urgent ? '#fff' : PALETTE.ink, 'center', urgent ? PALETTE.redDark : '#d8c9a8');
-  text(ctx, `MONEY $${world.money}`, 810, 32, 17, PALETTE.mustard, 'right', '900');
-  text(ctx, `SCORE ${world.score}`, 950, 32, 21, PALETTE.gold, 'right', '900');
-  text(ctx, `★ ${world.regulars}`, 1075, 32, 17, PALETTE.gold, 'right', '900');
-  text(ctx, `Served ${world.served} · Walked out ${world.expired}`, 980, 52, 12, '#cbb98f', 'right', '700');
+  pill(ctx, 518, 10, 104, 42, urgent ? PALETTE.red : PALETTE.cream, PALETTE.ink, 3);
+  display(ctx, fmtTime(world.timeLeft), 570, 32, 28, urgent ? '#fff' : PALETTE.ink, 'center', urgent ? PALETTE.redDark : '#d8c9a8');
+  fitText(ctx, `MONEY $${world.money}`, 640, 31, 148, 17, PALETTE.mustard, 'left', '900', 13);
+  fitText(ctx, `SCORE ${world.score}`, 806, 31, 164, 21, PALETTE.gold, 'left', '900', 15);
+  fitText(ctx, `★ ${world.regulars}`, 988, 31, 76, 17, PALETTE.gold, 'left', '900', 13);
+  fitText(ctx, `Served ${world.served} · Walked out ${world.expired}`, 1180, 50, 540, 12, '#cbb98f', 'right', '700', 10);
   // Mute button (rect is the click target in main.js — keep it).
   pill(ctx, 1196, 14, 64, 34, '#4a4238', PALETTE.mustard, 2);
   text(ctx, '♪ M', 1228, 32, 15, '#fff8e7', 'center', '800');
